@@ -1,0 +1,896 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>比賽歷史記錄</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .history-container {
+        max-width: 1200px;
+        margin: 60px auto 32px;
+        padding: 0 1.5rem;
+      }
+
+      .history-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 24px;
+      }
+
+      .back-link {
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 600;
+        font-size: 1.1rem;
+      }
+
+      .back-link:hover {
+        text-decoration: underline;
+      }
+
+      .matches-grid {
+        display: grid;
+        gap: 20px;
+        grid-template-columns: repeat(4, 1fr);
+      }
+
+      .match-card {
+        background-color: #ffffff;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(31, 45, 55, 0.08);
+        padding: 16px;
+        border: 1px solid #e2e8f0;
+        position: relative;
+        cursor: pointer;
+        transition: box-shadow 0.2s, transform 0.2s;
+      }
+
+      .match-card:hover {
+        box-shadow: 0 12px 32px rgba(31, 45, 55, 0.12);
+        transform: translateY(-2px);
+      }
+
+      .match-card.expanded {
+        box-shadow: 0 12px 32px rgba(31, 45, 55, 0.15);
+      }
+
+      .match-card.deleting {
+        opacity: 0.5;
+        pointer-events: none;
+      }
+
+      /* 集合卡片樣式 */
+      .match-group-card {
+        cursor: pointer;
+      }
+
+      .match-group-sets {
+        margin-top: 12px;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        max-height: 0;
+        overflow: hidden;
+        transition: max-height 0.3s ease;
+        pointer-events: none;
+      }
+
+      .match-group-card.expanded .match-group-sets {
+        max-height: 500px;
+        pointer-events: auto;
+      }
+
+      .set-mini-card {
+        background-color: #f8fafc;
+        border: 1px solid #d1d5db;
+        border-radius: 8px;
+        padding: 10px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s;
+      }
+
+      .set-mini-card:hover {
+        background-color: #eff6ff;
+        border-color: #1d4ed8;
+        box-shadow: 0 4px 12px rgba(29, 78, 216, 0.15);
+      }
+
+      .set-number {
+        font-weight: 600;
+        color: #1d4ed8;
+        font-size: 0.9rem;
+        margin-bottom: 4px;
+      }
+
+      .set-score {
+        font-size: 1.2rem;
+        font-weight: 700;
+        color: #1e293b;
+      }
+
+      /* 詳細統計視圖 */
+      .set-details-modal {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+        padding: 20px;
+      }
+
+      .set-details-modal.active {
+        display: flex;
+      }
+
+      .set-details-content {
+        background-color: white;
+        border-radius: 12px;
+        max-width: 900px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 25px rgba(0, 0, 0, 0.15);
+      }
+
+      .set-details-header {
+        padding: 24px;
+        border-bottom: 1px solid #e2e8f0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .set-details-header h3 {
+        margin: 0;
+        color: #1d4ed8;
+        font-size: 1.3rem;
+      }
+
+      .set-details-close {
+        background: none;
+        border: none;
+        font-size: 1.5rem;
+        cursor: pointer;
+        color: #64748b;
+        padding: 0;
+        width: 32px;
+        height: 32px;
+      }
+
+      .set-details-body {
+        padding: 24px;
+      }
+
+      .set-details-section {
+        margin-bottom: 24px;
+      }
+
+      .set-details-section h4 {
+        margin: 0 0 12px;
+        color: #374151;
+        font-size: 1rem;
+      }
+
+      .match-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+        padding-bottom: 12px;
+        border-bottom: 1px solid #f1f5f9;
+      }
+
+      .match-info h3 {
+        margin: 0 0 4px;
+        color: #1d4ed8;
+        font-size: 1.2rem;
+      }
+
+      .match-meta {
+        color: #64748b;
+        font-size: 0.9rem;
+      }
+
+      .match-score {
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: #1e293b;
+      }
+
+      .match-actions {
+        position: absolute;
+        top: 16px;
+        right: 16px;
+      }
+
+      .delete-btn {
+        background-color: #f87171;
+        color: white;
+        border: none;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        font-weight: 600;
+        transition: background-color 0.2s;
+      }
+
+      .delete-btn:hover {
+        background-color: #ef4444;
+      }
+
+      .stats-section {
+        margin-top: 16px;
+      }
+
+      .stats-section h4 {
+        margin: 0 0 12px;
+        color: #374151;
+        font-size: 1rem;
+      }
+
+      .stats-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.9rem;
+      }
+
+      .stats-table th,
+      .stats-table td {
+        padding: 6px 8px;
+        text-align: left;
+        border-bottom: 1px solid #f1f5f9;
+      }
+
+      .stats-table th {
+        background-color: #f8fafc;
+        font-weight: 600;
+        color: #374151;
+      }
+
+      .no-matches {
+        text-align: center;
+        padding: 60px 20px;
+        color: #64748b;
+        font-size: 1.1rem;
+      }
+
+      .loading {
+        text-align: center;
+        padding: 40px;
+        color: #64748b;
+      }
+
+      .match-status {
+        display: inline-block;
+        padding: 4px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .status-completed {
+        background-color: #dcfce7;
+        color: #166534;
+      }
+
+      .status-ongoing {
+        background-color: #fef3c7;
+        color: #92400e;
+      }
+
+      .modal-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: rgba(0, 0, 0, 0.5);
+        z-index: 1000;
+        justify-content: center;
+        align-items: center;
+      }
+
+      .modal-overlay.active {
+        display: flex;
+      }
+
+      .modal-dialog {
+        background-color: white;
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 400px;
+        box-shadow: 0 20px 25px rgba(0, 0, 0, 0.15);
+      }
+
+      .modal-dialog h3 {
+        margin: 0 0 12px;
+        color: #1e293b;
+        font-size: 1.3rem;
+      }
+
+      .modal-dialog p {
+        color: #64748b;
+        margin: 0 0 24px;
+        line-height: 1.5;
+      }
+
+      .modal-buttons {
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+      }
+
+      .modal-btn {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+
+      .modal-btn-cancel {
+        background-color: #e2e8f0;
+        color: #1e293b;
+      }
+
+      .modal-btn-cancel:hover {
+        background-color: #cbd5e1;
+      }
+
+      .modal-btn-delete {
+        background-color: #f87171;
+        color: white;
+      }
+
+      .modal-btn-delete:hover {
+        background-color: #ef4444;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>比賽歷史記錄</h1>
+    </header>
+    <main>
+      <div class="history-container">
+        <div class="history-header">
+          <h2>過往比賽</h2>
+          <a href="/" class="back-link">← 回到比賽記錄</a>
+        </div>
+
+    <!-- 集合比賽卡片容器 -->
+    <div id="matches-container">
+      <div class="loading">載入中...</div>
+    </div>
+
+    <!-- 單局詳細統計 Modal -->
+    <div class="set-details-modal" id="set-details-modal">
+      <div class="set-details-content">
+        <div class="set-details-header">
+          <h3 id="set-details-title">第 1 局詳細統計</h3>
+          <button class="set-details-close" id="set-details-close">✕</button>
+        </div>
+        <div class="set-details-body" id="set-details-body">
+        </div>
+      </div>
+    </div>
+    <div class="modal-overlay" id="delete-modal">
+      <div class="modal-dialog">
+        <h3>確認刪除</h3>
+        <p>你確定要刪除這場比賽嗎？此操作無法復原。</p>
+        <div class="modal-buttons">
+          <button class="modal-btn modal-btn-cancel" id="cancel-delete-btn">取消</button>
+          <button class="modal-btn modal-btn-delete" id="confirm-delete-btn">確認刪除</button>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      const matchesContainer = document.getElementById('matches-container');
+      const deleteModal = document.getElementById('delete-modal');
+      const cancelDeleteBtn = document.getElementById('cancel-delete-btn');
+      const confirmDeleteBtn = document.getElementById('confirm-delete-btn');
+      const setDetailsModal = document.getElementById('set-details-modal');
+      const setDetailsClose = document.getElementById('set-details-close');
+
+      let pendingDeleteMatchId = null;
+      let currentSetDetails = null;
+
+      // 日期格式化
+      function formatDate(dateStr) {
+        if (!dateStr) return '未設定';
+        const date = new Date(dateStr);
+        return date.toLocaleDateString('zh-TW');
+      }
+
+      // 載入歷史比賽
+      async function loadMatchHistory() {
+        try {
+          const res = await fetch('/api/matches-history');
+          if (!res.ok) throw new Error('載入失敗');
+
+          const matches = await res.json();
+          groupAndRenderMatches(matches);
+        } catch (err) {
+          console.error('載入歷史記錄失敗:', err);
+          matchesContainer.innerHTML = '<div class="no-matches">載入失敗，請稍後再試</div>';
+        }
+      }
+
+      // 按對手和日期分組比賽
+      function groupMatches(matches) {
+        const grouped = {};
+        matches.forEach(match => {
+          const key = `${match.school || '未設定'}|${match.date || '未設定'}`;
+          if (!grouped[key]) {
+            grouped[key] = {
+              school: match.school || '未設定',
+              date: match.date || '未設定',
+              sets: []
+            };
+          }
+          grouped[key].sets.push(match);
+        });
+        // 對每組的 sets 按照 created_at 排序（最早的在前）
+        Object.values(grouped).forEach(group => {
+          group.sets.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        });
+        return Object.values(grouped);
+      }
+
+      // 渲染分組後的比賽
+      function groupAndRenderMatches(matches) {
+        if (matches.length === 0) {
+          matchesContainer.innerHTML = '<div class="no-matches">還沒有任何比賽記錄</div>';
+          return;
+        }
+
+        const groups = groupMatches(matches);
+        const matchesGrid = document.createElement('div');
+        matchesGrid.className = 'matches-grid';
+
+        groups.forEach(group => {
+          const groupCard = createMatchGroupCard(group);
+          matchesGrid.appendChild(groupCard);
+        });
+
+        matchesContainer.innerHTML = '';
+        matchesContainer.appendChild(matchesGrid);
+      }
+
+      // 建立比賽集合卡片
+      function createMatchGroupCard(group) {
+        const card = document.createElement('div');
+        card.className = 'match-card match-group-card';
+        card.id = `group-${group.school}-${group.date}`;
+
+        // 計算贏的局數
+        let ourWins = 0;
+        let opponentWins = 0;
+        group.sets.forEach(set => {
+          const ourScore = set.our_score || 0;
+          const opponentScore = set.opponent_score || 0;
+          if (ourScore > opponentScore) {
+            ourWins++;
+          } else if (opponentScore > ourScore) {
+            opponentWins++;
+          }
+        });
+
+        const mainContent = `
+          <div class="match-header">
+            <div class="match-info">
+              <h3>${group.school}</h3>
+              <div class="match-meta">
+                ${formatDate(group.date)}
+                <span class="match-status status-completed">共 ${group.sets.length} 局</span>
+              </div>
+            </div>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <div class="match-score">
+              ${ourWins} : ${opponentWins}
+            </div>
+          </div>
+          <div class="match-group-sets">
+            ${group.sets.map((set, index) => `
+              <div class="set-mini-card" data-match-id="${set.match_id}">
+                <div class="set-number">第 ${index + 1} 局</div>
+                <div class="set-score">${set.our_score || 0} : ${set.opponent_score || 0}</div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+
+        card.innerHTML = mainContent;
+
+        // 主卡片點擊展開/收起
+        card.addEventListener('click', (e) => {
+          // 如果點擊的是小卡片，則不展開/收起主卡片
+          if (e.target.closest('.set-mini-card')) {
+            return;
+          }
+          card.classList.toggle('expanded');
+        });
+
+        // 小卡片點擊事件 - 查看詳細統計
+        card.querySelectorAll('.set-mini-card').forEach(miniCard => {
+          miniCard.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const matchId = miniCard.dataset.matchId;
+            const setIndex = Array.from(card.querySelectorAll('.set-mini-card')).indexOf(miniCard);
+            showSetDetails(matchId, setIndex + 1, group.sets[setIndex]);
+          });
+        });
+
+        // 刪除按鈕
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'delete-btn';
+        deleteBtn.textContent = '刪除全部';
+        deleteBtn.style.position = 'absolute';
+        deleteBtn.style.top = '16px';
+        deleteBtn.style.right = '16px';
+        deleteBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          pendingDeleteMatchId = group.sets.map(s => s.match_id);
+          deleteModal.classList.add('active');
+        });
+        card.appendChild(deleteBtn);
+
+        return card;
+      }
+
+      // 構建得失分原因統計 HTML
+      function buildReasonStatsHtml(stats, playerReasonStats) {
+        // 統計得分和失分
+        const reasonStats = {
+          score: {},
+          loss: {}
+        };
+
+        // 從 stats 中統計得分（我方為正分）和失分（對方為正分）
+        stats.forEach(stat => {
+          if (stat.team === 'ours' && stat.grade) {
+            // 這是我方接球品質統計，不是得失分原因
+            // 所以不在這裡統計
+          }
+        });
+
+        // 從 playerReasonStats 中統計得分/失分原因
+        playerReasonStats.forEach(stat => {
+          if (stat.reason_type === 'score') {
+            reasonStats.score[stat.reason_id] = (reasonStats.score[stat.reason_id] || 0) + stat.count;
+          } else if (stat.reason_type === 'loss') {
+            reasonStats.loss[stat.reason_id] = (reasonStats.loss[stat.reason_id] || 0) + stat.count;
+          }
+        });
+
+        const scoreReasons = [
+          { id: 'attack', label: '攻擊得分' },
+          { id: 'serve', label: '發球得分' },
+          { id: 'block', label: '攔網得分' },
+          { id: 'tip', label: '吊球得分' },
+        ];
+        const lossReasons = [
+          { id: 'attack_no_in', label: '攻擊失誤(No In)' },
+          { id: 'attack_out', label: '攻擊失誤(Out Ball)' },
+          { id: 'serve_error', label: '發球失誤' },
+          { id: 'defense_error', label: '防守失誤' },
+        ];
+
+        // 構建得分原因表格
+        let scoreHtml = '<table class="stats-table"><thead><tr><th>得分原因</th><th>次數</th></tr></thead><tbody>';
+        let hasScoreData = false;
+        scoreReasons.forEach(option => {
+          const count = reasonStats.score[option.id] || 0;
+          if (count > 0) {
+            hasScoreData = true;
+            scoreHtml += `<tr style="background-color: #d1fae5;"><td>${option.label}</td><td style="text-align: center; color: #059669; font-weight: 600;">${count}</td></tr>`;
+          }
+        });
+        if (!hasScoreData) {
+          scoreHtml += `<tr><td colspan="2" style="text-align: center; color: #999; font-style: italic;">無得分記錄</td></tr>`;
+        }
+        scoreHtml += '</tbody></table>';
+
+        // 構建失分原因表格
+        let lossHtml = '<table class="stats-table"><thead><tr><th>失分原因</th><th>次數</th></tr></thead><tbody>';
+        let hasLossData = false;
+        lossReasons.forEach(option => {
+          const count = reasonStats.loss[option.id] || 0;
+          if (count > 0) {
+            hasLossData = true;
+            lossHtml += `<tr style="background-color: #fee2e2;"><td>${option.label}</td><td style="text-align: center; color: #dc2626; font-weight: 600;">${count}</td></tr>`;
+          }
+        });
+        if (!hasLossData) {
+          lossHtml += `<tr><td colspan="2" style="text-align: center; color: #999; font-style: italic;">無失分記錄</td></tr>`;
+        }
+        lossHtml += '</tbody></table>';
+
+        return `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+            <div>
+              <h5 style="margin: 0 0 12px; color: #059669;">得分原因</h5>
+              ${scoreHtml}
+            </div>
+            <div>
+              <h5 style="margin: 0 0 12px; color: #dc2626;">失分原因</h5>
+              ${lossHtml}
+            </div>
+          </div>
+        `;
+      }
+
+      // 顯示單局詳細統計
+      async function showSetDetails(matchId, setNumber, match) {
+        try {
+          // 載入該場比賽的所有統計
+          const statsRes = await fetch(`/api/match-stats/${matchId}`);
+          const playerReasonRes = await fetch(`/api/player-reason-stats/${matchId}`);
+
+          let stats = [];
+          let playerReasonStats = [];
+
+          if (statsRes.ok) stats = await statsRes.json();
+          if (playerReasonRes.ok) playerReasonStats = await playerReasonRes.json();
+
+          // 構建詳細內容
+          const detailsBody = document.getElementById('set-details-body');
+          const title = document.getElementById('set-details-title');
+          title.textContent = `${match.school || '未設定'} - 第 ${setNumber} 局詳細統計 (${match.our_score} : ${match.opponent_score})`;
+
+          // 1. 接球品質統計
+          const ourStats = stats.filter(s => s.team === 'ours');
+          const opponentStats = stats.filter(s => s.team === 'opponent');
+          
+          const playerStats = {};
+          ourStats.forEach(stat => {
+            if (!playerStats[stat.player_name]) {
+              playerStats[stat.player_name] = { A: 0, B: 0, C: 0, D: 0 };
+            }
+            playerStats[stat.player_name][stat.grade] += stat.count;
+          });
+
+          const opponentPlayerStats = {};
+          opponentStats.forEach(stat => {
+            if (!opponentPlayerStats[stat.player_name]) {
+              opponentPlayerStats[stat.player_name] = { A: 0, B: 0, C: 0, D: 0 };
+            }
+            opponentPlayerStats[stat.player_name][stat.grade] += stat.count;
+          });
+
+          // 調試：列印數據
+          console.log('我方接球品質數據:', playerStats);
+          console.log('對方接球品質數據:', opponentPlayerStats);
+          console.log('所有 stats 數據:', stats);
+
+          let qualityHtml = '';
+          
+          // 我方接球品質表格
+          let ourQualityHtml = '';
+          if (Object.keys(playerStats).length > 0) {
+            ourQualityHtml = `<table class="stats-table">
+              <thead>
+                <tr>
+                  <th>球員</th>
+                  <th>A級</th>
+                  <th>B級</th>
+                  <th>C級</th>
+                  <th>D級</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${Object.entries(playerStats).map(([playerName, grades]) => `
+                  <tr>
+                    <td>${playerName}</td>
+                    <td>${grades.A || 0}</td>
+                    <td>${grades.B || 0}</td>
+                    <td>${grades.C || 0}</td>
+                    <td>${grades.D || 0}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>`;
+          } else {
+            ourQualityHtml = '<p style="color: #64748b; font-style: italic;">無統計數據</p>';
+          }
+
+          // 對方接球品質表格
+          let opponentQualityHtml = '';
+          if (Object.keys(opponentPlayerStats).length > 0) {
+            opponentQualityHtml = `<table class="stats-table">
+              <thead>
+                <tr>
+                  <th>球員</th>
+                  <th>A級</th>
+                  <th>B級</th>
+                  <th>C級</th>
+                  <th>D級</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${Object.entries(opponentPlayerStats).map(([playerName, grades]) => `
+                  <tr>
+                    <td>${playerName}</td>
+                    <td>${grades.A || 0}</td>
+                    <td>${grades.B || 0}</td>
+                    <td>${grades.C || 0}</td>
+                    <td>${grades.D || 0}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>`;
+          } else {
+            opponentQualityHtml = '<p style="color: #64748b; font-style: italic;">無統計數據</p>';
+          }
+
+          // 根據是否有對方數據決定是否並列顯示
+          if (Object.keys(opponentPlayerStats).length > 0) {
+            qualityHtml = `
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                <div>
+                  <h5 style="margin: 0 0 12px; color: #1d4ed8;">我方</h5>
+                  ${ourQualityHtml}
+                </div>
+                <div>
+                  <h5 style="margin: 0 0 12px; color: #e11d48;">對方</h5>
+                  ${opponentQualityHtml}
+                </div>
+              </div>
+            `;
+          } else {
+            qualityHtml = `
+              <div>
+                <h5 style="margin: 0 0 12px; color: #1d4ed8;">我方</h5>
+                ${ourQualityHtml}
+              </div>
+            `;
+          }
+
+          // 2. 球員得失分原因統計
+          const playerReasonMap = {};
+          playerReasonStats.forEach(stat => {
+            if (!playerReasonMap[stat.player_id]) {
+              playerReasonMap[stat.player_id] = {
+                name: stat.player_name,
+                score: {},
+                loss: {},
+              };
+            }
+            if (stat.reason_type === 'score') {
+              playerReasonMap[stat.player_id].score[stat.reason_id] = stat.count;
+            } else {
+              playerReasonMap[stat.player_id].loss[stat.reason_id] = stat.count;
+            }
+          });
+
+          const scoreReasons = [
+            { id: 'attack', label: '攻擊得分' },
+            { id: 'serve', label: '發球得分' },
+            { id: 'block', label: '攔網得分' },
+            { id: 'tip', label: '吊球得分' },
+          ];
+          const lossReasons = [
+            { id: 'attack_no_in', label: '攻擊失誤(No In)' },
+            { id: 'attack_out', label: '攻擊失誤(Out Ball)' },
+            { id: 'serve_error', label: '發球失誤' },
+            { id: 'defense_error', label: '防守失誤' },
+          ];
+
+          let playerReasonHtml = '';
+          if (Object.keys(playerReasonMap).length > 0) {
+            playerReasonHtml = `<table class="stats-table" style="font-size: 0.85rem;">
+              <thead>
+                <tr>
+                  <th>球員名稱</th>
+                  ${scoreReasons.map(r => `<th style="background-color: #d1fae5;">${r.label}</th>`).join('')}
+                  ${lossReasons.map(r => `<th style="background-color: #fee2e2;">${r.label}</th>`).join('')}
+                </tr>
+              </thead>
+              <tbody>
+                ${Object.entries(playerReasonMap).map(([playerId, playerData]) => `
+                  <tr>
+                    <td>${playerData.name || '已畢業'}</td>
+                    ${scoreReasons.map(r => `<td style="text-align: center; ${playerData.score[r.id] ? 'background-color: #d1fae5; color: #059669; font-weight: 600;' : ''}">${playerData.score[r.id] || ''}</td>`).join('')}
+                    ${lossReasons.map(r => `<td style="text-align: center; ${playerData.loss[r.id] ? 'background-color: #fee2e2; color: #dc2626; font-weight: 600;' : ''}">${playerData.loss[r.id] || ''}</td>`).join('')}
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>`;
+          } else {
+            playerReasonHtml = '<p style="color: #64748b; font-style: italic;">無統計數據</p>';
+          }
+
+          detailsBody.innerHTML = `
+            <div class="set-details-section">
+              <h4>我方接球品質統計</h4>
+              ${qualityHtml}
+            </div>
+            <div class="set-details-section">
+              <h4>得分/失分原因統計</h4>
+              ${buildReasonStatsHtml(stats, playerReasonStats)}
+            </div>
+            <div class="set-details-section">
+              <h4>我方球員得失分統計</h4>
+              ${playerReasonHtml}
+            </div>
+          `;
+
+          setDetailsModal.classList.add('active');
+          currentSetDetails = matchId;
+        } catch (err) {
+          console.error('載入詳細統計失敗:', err);
+          alert('載入詳細統計失敗');
+        }
+      }
+
+      // 刪除比賽
+      async function deleteMatch(matchIds) {
+        const idArray = Array.isArray(matchIds) ? matchIds : [matchIds];
+        try {
+          for (const matchId of idArray) {
+            const res = await fetch(`/api/matches/${matchId}`, {
+              method: 'DELETE',
+            });
+            if (!res.ok) throw new Error(`刪除失敗: ${matchId}`);
+          }
+
+          // 重新載入
+          loadMatchHistory();
+        } catch (err) {
+          console.error('刪除比賽失敗:', err);
+          alert('刪除失敗: ' + err.message);
+        }
+      }
+
+      // Modal 事件
+      setDetailsClose.addEventListener('click', () => {
+        setDetailsModal.classList.remove('active');
+        currentSetDetails = null;
+      });
+
+      setDetailsModal.addEventListener('click', (e) => {
+        if (e.target === setDetailsModal) {
+          setDetailsModal.classList.remove('active');
+          currentSetDetails = null;
+        }
+      });
+
+      cancelDeleteBtn.addEventListener('click', () => {
+        deleteModal.classList.remove('active');
+        pendingDeleteMatchId = null;
+      });
+
+      confirmDeleteBtn.addEventListener('click', () => {
+        if (pendingDeleteMatchId) {
+          deleteMatch(pendingDeleteMatchId);
+          deleteModal.classList.remove('active');
+          pendingDeleteMatchId = null;
+        }
+      });
+
+      deleteModal.addEventListener('click', (e) => {
+        if (e.target === deleteModal) {
+          deleteModal.classList.remove('active');
+          pendingDeleteMatchId = null;
+        }
+      });
+
+      // 初始化
+      loadMatchHistory();
+    </script>
+  </body>
+</html>

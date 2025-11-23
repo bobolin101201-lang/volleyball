@@ -1,0 +1,604 @@
+﻿const gradeOptions = ['A', 'B', 'C', 'D', 'F'];
+const displayedGrades = ['A', 'B', 'C', 'D'];
+
+// 得分方式選項
+const scoreTypeOptions = [
+  { id: 'attack', label: '攻擊得分' },
+  { id: 'serve', label: '發球得分' },
+  { id: 'tip', label: '吊球得分' },
+  { id: 'block', label: '攔網得分' },
+  { id: 'opp_attack_error', label: '對方攻擊失誤' },
+  { id: 'opp_serve_error', label: '對方發球失誤' },
+  { id: 'opp_defense_error', label: '對方防守失誤' },
+  { id: 'opp_foul', label: '對方犯規' },
+];
+
+// 失分方式選項
+const lossTypeOptions = [
+  { id: 'opp_attack', label: '對方攻擊得分' },
+  { id: 'opp_serve', label: '對方發球得分' },
+  { id: 'opp_tip', label: '對方吊球得分' },
+  { id: 'opp_block', label: '對方攔網得分' },
+  { id: 'attack_no_in', label: '攻擊失誤(no in)' },
+  { id: 'attack_out', label: '攻擊失誤(out ball)' },
+  { id: 'serve_error', label: '發球失誤' },
+  { id: 'defense_error', label: '防守失誤' },
+  { id: 'raise_error', label: '舉球失誤' },
+  { id: 'other_error', label: '其他失誤' },
+  { id: 'foul', label: '犯規' },
+];
+
+// 比賽信息
+const matchInfo = {
+  school: '',
+  date: '',
+};
+
+const lineupState = {
+  ours: [],
+  opponent: [],
+};
+
+// 統計數據 - 每個球員的評分統計
+const stats = {
+  ours: {},
+  opponent: {},
+};
+
+let activeGradeSelector = null;
+let activeScoreTypeSelector = null;
+let isDeleteMode = false;
+let matchOver = false;
+let hasGradedPlayer = false; // 追蹤是否有球員被評分
+
+const score = {
+  ours: 0,
+  opponent: 0,
+};
+
+let currentGradedPlayerId = null; // 追蹤當前被評分的球員ID
+
+// 比賽信息輸入
+const schoolInput = document.getElementById('school-input');
+const matchDateInput = document.getElementById('match-date-input');
+
+const teams = {
+  ours: {
+    input: document.getElementById('our-player-input'),
+    addBtn: document.getElementById('add-our-player-btn'),
+    list: document.getElementById('our-player-list'),
+  },
+  opponent: {
+    input: document.getElementById('opponent-player-input'),
+    addBtn: document.getElementById('add-opponent-player-btn'),
+    list: document.getElementById('opponent-player-list'),
+  },
+};
+
+const scoreDisplay = document.getElementById('score-display');
+const scorePlusBtn = document.getElementById('score-plus-btn');
+const scoreMinusBtn = document.getElementById('score-minus-btn');
+const clearOpponentPlayersBtn = document.getElementById('clear-opponent-players-btn');
+const nextSetBtn = document.getElementById('next-set-btn');
+const resetMatchBtn = document.getElementById('reset-match-btn');
+const scoreNeutralBtn = document.getElementById('score-neutral-btn');
+const matchResult = document.getElementById('match-result');
+
+function closeActiveSelector() {
+  if (activeGradeSelector) {
+    const { container, button } = activeGradeSelector;
+    container.remove();
+    button.classList.remove('player-btn--active');
+    activeGradeSelector = null;
+  }
+}
+
+function closeScoreTypeSelector() {
+  if (activeScoreTypeSelector) {
+    const { container, button } = activeScoreTypeSelector;
+    container.remove();
+    button.classList.remove('score-btn--active');
+    activeScoreTypeSelector = null;
+  }
+}
+
+function createScoreTypeSelector(button, callback) {
+  closeScoreTypeSelector();
+
+  const selector = document.createElement('div');
+  selector.className = 'score-type-selector';
+
+  // 根據按鈕類型決定要顯示的選項
+  const options = button === scorePlusBtn ? scoreTypeOptions : lossTypeOptions;
+
+  options.forEach((option) => {
+    const optionBtn = document.createElement('button');
+    optionBtn.type = 'button';
+    optionBtn.className = 'score-type-option';
+    optionBtn.textContent = option.label;
+    optionBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      callback(option.id);
+      closeScoreTypeSelector();
+    });
+    selector.appendChild(optionBtn);
+  });
+
+  button.appendChild(selector);
+  button.classList.add('score-btn--active');
+  activeScoreTypeSelector = { container: selector, button };
+}
+
+function updateGradeBadge(teamKey, playerId, grade) {
+  const button = teams[teamKey].list.querySelector(`[data-player-id="${playerId}"]`);
+  if (!button) {
+    return;
+  }
+
+  if (grade) {
+    button.dataset.grade = grade;
+  } else {
+    delete button.dataset.grade;
+  }
+}
+
+function updateStats(teamKey, playerId, grade) {
+  if (displayedGrades.includes(grade)) {
+    // 初始化球員的統計數據（如果不存在）
+    if (!stats[teamKey][playerId]) {
+      stats[teamKey][playerId] = {
+        A: 0, B: 0, C: 0, D: 0
+      };
+    }
+    stats[teamKey][playerId][grade]++;
+    updateStatsDisplay();
+  }
+}
+
+function updateStatsDisplay() {
+  const tableIds = {
+    ours: 'our-stats-table',
+    opponent: 'opponent-stats-table'
+  };
+
+  Object.keys(tableIds).forEach(teamKey => {
+    const tableBody = document.getElementById(tableIds[teamKey]);
+    tableBody.innerHTML = '';
+
+    // 獲取被評分過的球員
+    let playersToDisplay = lineupState[teamKey].filter(player => stats[teamKey][player.id]);
+
+    // 對方統計表按 D級和 C級排序（D級多的排前面，D級相同則 C級多的排前面）
+    if (teamKey === 'opponent') {
+      playersToDisplay.sort((a, b) => {
+        const statsA = stats[teamKey][a.id];
+        const statsB = stats[teamKey][b.id];
+        
+        // 先比較 D 級數量（多的在前）
+        if (statsB.D !== statsA.D) {
+          return statsB.D - statsA.D;
+        }
+        
+        // D 級相同則比較 C 級數量（多的在前）
+        return statsB.C - statsA.C;
+      });
+    }
+
+    // 生成表格行
+    playersToDisplay.forEach(player => {
+      const row = document.createElement('tr');
+      const playerStats = stats[teamKey][player.id];
+      
+      row.innerHTML = `
+        <td>${player.name}</td>
+        <td>${playerStats.A}</td>
+        <td>${playerStats.B}</td>
+        <td>${playerStats.C}</td>
+        <td>${playerStats.D}</td>
+      `;
+      tableBody.appendChild(row);
+    });
+
+    // 如果沒有統計數據，顯示空狀態
+    if (tableBody.children.length === 0) {
+      const emptyRow = document.createElement('tr');
+      emptyRow.innerHTML = '<td colspan="5" style="text-align: center; color: #999;">尚無統計數據</td>';
+      tableBody.appendChild(emptyRow);
+    }
+  });
+}
+
+function resetStats() {
+  stats.ours = {};
+  stats.opponent = {};
+  updateStatsDisplay();
+}
+
+function updateScoreBtnsStyle() {
+  // 根據是否有球員被評分，更新按鈕的禁用狀態和樣式
+  if (hasGradedPlayer) {
+    scorePlusBtn.style.opacity = '1';
+    scorePlusBtn.style.cursor = 'pointer';
+    scorePlusBtn.style.pointerEvents = 'auto';
+    scoreMinusBtn.style.opacity = '1';
+    scoreMinusBtn.style.cursor = 'pointer';
+    scoreMinusBtn.style.pointerEvents = 'auto';
+  } else {
+    scorePlusBtn.style.opacity = '0.5';
+    scorePlusBtn.style.cursor = 'not-allowed';
+    scorePlusBtn.style.pointerEvents = 'none';
+    scoreMinusBtn.style.opacity = '0.5';
+    scoreMinusBtn.style.cursor = 'not-allowed';
+    scoreMinusBtn.style.pointerEvents = 'none';
+  }
+}
+
+function clearAllDisplayedGrades(exceptPlayerId) {
+  // 清除兩個隊伍的所有評分
+  Object.keys(lineupState).forEach(teamKey => {
+    lineupState[teamKey].forEach((player) => {
+      if (player.id !== exceptPlayerId) {
+        player.grade = null;
+      }
+    });
+
+    const list = teams[teamKey].list;
+    Array.from(list.querySelectorAll('.player-btn')).forEach((button) => {
+      if (button.dataset.playerId !== exceptPlayerId) {
+        delete button.dataset.grade;
+      }
+    });
+  });
+  
+  hasGradedPlayer = false; // 清除評分標記
+  updateScoreBtnsStyle(); // 更新按鈕樣式
+}
+
+function setPlayerGrade(teamKey, playerId, grade) {
+  // 如果有其他球員已被評分（不論是哪一隊），清除所有球員的評分
+  if (currentGradedPlayerId && currentGradedPlayerId !== playerId) {
+    clearAllDisplayedGrades(playerId);
+  }
+
+  const player = lineupState[teamKey].find((item) => item.id === playerId);
+  if (!player) {
+    return;
+  }
+
+  player.grade = grade;
+  player.lastUpdatedAt = new Date().toISOString();
+  updateGradeBadge(teamKey, playerId, grade);
+  currentGradedPlayerId = playerId; // 記錄當前被評分的球員ID
+  hasGradedPlayer = true; // 標記有球員被評分
+  updateScoreBtnsStyle(); // 更新得分/失分按鈕樣式
+}
+
+function createGradeSelector(button, teamKey, playerId) {
+  closeActiveSelector();
+
+  const selector = document.createElement('div');
+  selector.className = 'grade-selector';
+
+  gradeOptions.forEach((grade) => {
+    const optionBtn = document.createElement('button');
+    optionBtn.type = 'button';
+    optionBtn.className = 'grade-option';
+    optionBtn.textContent = grade;
+    optionBtn.addEventListener('click', (event) => {
+      event.stopPropagation();
+      setPlayerGrade(teamKey, playerId, grade);
+      closeActiveSelector();
+    });
+    selector.appendChild(optionBtn);
+  });
+
+  document.body.appendChild(selector);
+  
+  // 計算按鈕位置並設定選擇器的 fixed 位置
+  const rect = button.getBoundingClientRect();
+  selector.style.left = (rect.left + rect.width / 2 - selector.offsetWidth / 2) + 'px';
+  selector.style.top = (rect.bottom + 8) + 'px';
+  
+  button.classList.add('player-btn--active');
+  activeGradeSelector = { container: selector, button };
+}
+
+function handlePlayerButtonClick(event, teamKey, playerId) {
+  event.stopPropagation();
+  const button = event.currentTarget;
+  if (activeGradeSelector && activeGradeSelector.button === button) {
+    closeActiveSelector();
+  } else {
+    createGradeSelector(button, teamKey, playerId);
+  }
+}
+
+function createPlayerButton(teamKey, player) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'player-btn';
+  button.dataset.playerId = player.id;
+
+  const nameSpan = document.createElement('span');
+  nameSpan.className = 'player-name';
+  nameSpan.textContent = player.name;
+  button.appendChild(nameSpan);
+
+  if (player.grade) {
+    button.dataset.grade = player.grade;
+  }
+
+  button.addEventListener('click', (event) => {
+    if (isDeleteMode && teamKey === 'opponent') {
+      // 刪除模式下，點擊對方球員將其刪除
+      deletePlayer(teamKey, player.id);
+    } else {
+      handlePlayerButtonClick(event, teamKey, player.id);
+    }
+  });
+  return button;
+}
+
+function addPlayer(teamKey, name) {
+  const trimmedName = name.trim();
+  if (!trimmedName) {
+    return;
+  }
+
+  const player = {
+    id: `${teamKey}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    name: trimmedName,
+    grade: null,
+  };
+
+  lineupState[teamKey].push(player);
+  const button = createPlayerButton(teamKey, player);
+  teams[teamKey].list.appendChild(button);
+}
+
+function removeTeamPlayers(teamKey) {
+  lineupState[teamKey] = [];
+  teams[teamKey].list.innerHTML = '';
+  closeActiveSelector();
+}
+
+function deletePlayer(teamKey, playerId) {
+  // 從 lineupState 中移除球員
+  lineupState[teamKey] = lineupState[teamKey].filter(player => player.id !== playerId);
+  
+  // 從 stats 中移除球員統計
+  delete stats[teamKey][playerId];
+  
+  // 重新渲染球員列表
+  teams[teamKey].list.innerHTML = '';
+  lineupState[teamKey].forEach(player => {
+    const button = createPlayerButton(teamKey, player);
+    teams[teamKey].list.appendChild(button);
+  });
+  
+  // 更新統計顯示
+  updateStatsDisplay();
+}
+
+function resetDisplayedGrades() {
+  clearAllDisplayedGrades(null);
+  closeActiveSelector();
+}
+
+function resetMatch() {
+  score.ours = 0;
+  score.opponent = 0;
+  matchOver = false;
+  scorePlusBtn.disabled = false;
+  scoreMinusBtn.disabled = false;
+  matchResult.textContent = '';
+  resetDisplayedGrades();
+  currentGradedPlayerId = null; // 重置當前評分球員
+  hasGradedPlayer = false; // 重置評分標記
+  resetStats(); // 重置統計數據
+  updateScoreDisplay();
+  updateScoreBtnsStyle(); // 更新按鈕樣式
+  
+  // 清空球員列表
+  removeTeamPlayers('ours');
+  removeTeamPlayers('opponent');
+  
+  // 清空學校和日期輸入框
+  matchInfo.school = '';
+  matchInfo.date = '';
+  schoolInput.value = '';
+  matchDateInput.value = '';
+  saveMatchInfoToLocalStorage();
+}
+
+function nextSet() {
+  score.ours = 0;
+  score.opponent = 0;
+  matchOver = false;
+  scorePlusBtn.disabled = false;
+  scoreMinusBtn.disabled = false;
+  matchResult.textContent = '';
+  resetDisplayedGrades();
+  currentGradedPlayerId = null; // 重置當前評分球員
+  hasGradedPlayer = false; // 重置評分標記
+  resetStats(); // 重置統計數據
+  updateScoreDisplay();
+  updateScoreBtnsStyle(); // 更新按鈕樣式
+}
+
+function checkMatchEnd() {
+  const diff = Math.abs(score.ours - score.opponent);
+  if ((score.ours >= 25 || score.opponent >= 25) && diff >= 2) {
+    matchOver = true;
+    const winnerLabel = score.ours > score.opponent ? '我方' : '對方';
+    matchResult.textContent = `${winnerLabel}以 ${score.ours} : ${score.opponent} 獲勝！`;
+    scorePlusBtn.disabled = true;
+    scoreMinusBtn.disabled = true;
+  }
+}
+
+function setupTeamControls(teamKey) {
+  const { input, addBtn } = teams[teamKey];
+
+  addBtn.addEventListener('click', () => {
+    addPlayer(teamKey, input.value);
+    input.value = '';
+    input.focus();
+  });
+
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addPlayer(teamKey, input.value);
+      input.value = '';
+    }
+  });
+}
+
+setupTeamControls('ours');
+setupTeamControls('opponent');
+
+document.addEventListener('click', (event) => {
+  if (activeGradeSelector) {
+    const isInside = activeGradeSelector.button.contains(event.target);
+    if (!isInside) {
+      closeActiveSelector();
+    }
+  }
+  
+  if (activeScoreTypeSelector) {
+    const isInside = activeScoreTypeSelector.button.contains(event.target);
+    if (!isInside) {
+      closeScoreTypeSelector();
+    }
+  }
+});
+
+function updateScoreDisplay() {
+  scoreDisplay.textContent = `${score.ours} : ${score.opponent}`;
+}
+
+scorePlusBtn.addEventListener('click', () => {
+  if (matchOver || !hasGradedPlayer) {
+    return;
+  }
+  
+  createScoreTypeSelector(scorePlusBtn, (scoreType) => {
+    // 記錄當前的評分到統計中
+    Object.keys(lineupState).forEach(teamKey => {
+      lineupState[teamKey].forEach(player => {
+        if (player.grade) {
+          updateStats(teamKey, player.id, player.grade);
+        }
+      });
+    });
+
+    score.ours += 1;
+    updateScoreDisplay();
+    clearAllDisplayedGrades(null);
+    closeActiveSelector();
+    currentGradedPlayerId = null; // 重置當前評分球員
+    checkMatchEnd();
+  });
+});
+
+scoreMinusBtn.addEventListener('click', () => {
+  if (matchOver || !hasGradedPlayer) {
+    return;
+  }
+  
+  createScoreTypeSelector(scoreMinusBtn, (lossType) => {
+    // 記錄當前的評分到統計中
+    Object.keys(lineupState).forEach(teamKey => {
+      lineupState[teamKey].forEach(player => {
+        if (player.grade) {
+          updateStats(teamKey, player.id, player.grade);
+        }
+      });
+    });
+
+    score.opponent += 1;
+    updateScoreDisplay();
+    clearAllDisplayedGrades(null);
+    closeActiveSelector();
+    currentGradedPlayerId = null; // 重置當前評分球員
+    checkMatchEnd();
+  });
+});
+
+clearOpponentPlayersBtn.addEventListener('click', () => {
+  // 切換刪除模式
+  isDeleteMode = !isDeleteMode;
+  
+  if (isDeleteMode) {
+    // 進入刪除模式，高亮顯示按鈕
+    clearOpponentPlayersBtn.classList.add('score-btn--deleting');
+    clearOpponentPlayersBtn.textContent = '點擊球員刪除';
+  } else {
+    // 退出刪除模式
+    clearOpponentPlayersBtn.classList.remove('score-btn--deleting');
+    clearOpponentPlayersBtn.textContent = '刪除對方球員';
+  }
+});
+
+nextSetBtn.addEventListener('click', nextSet);
+
+resetMatchBtn.addEventListener('click', resetMatch);
+
+// 公正按鈕的處理程序
+scoreNeutralBtn.addEventListener('click', () => {
+  if (matchOver) {
+    return;
+  }
+  
+  // 記錄當前的評分到統計中
+  Object.keys(lineupState).forEach(teamKey => {
+    lineupState[teamKey].forEach(player => {
+      if (player.grade) {
+        updateStats(teamKey, player.id, player.grade);
+      }
+    });
+  });
+  
+  // 清除所有球員的評分
+  clearAllDisplayedGrades(null);
+  closeActiveSelector();
+  currentGradedPlayerId = null;
+});
+
+// 比賽信息輸入事件監聽
+schoolInput.addEventListener('input', (e) => {
+  matchInfo.school = e.target.value;
+  saveMatchInfoToLocalStorage();
+});
+
+matchDateInput.addEventListener('change', (e) => {
+  matchInfo.date = e.target.value;
+  saveMatchInfoToLocalStorage();
+});
+
+// 保存比賽信息到本地存儲
+function saveMatchInfoToLocalStorage() {
+  localStorage.setItem('matchInfo', JSON.stringify(matchInfo));
+}
+
+// 從本地存儲加載比賽信息
+function loadMatchInfoFromLocalStorage() {
+  const saved = localStorage.getItem('matchInfo');
+  if (saved) {
+    const data = JSON.parse(saved);
+    matchInfo.school = data.school || '';
+    matchInfo.date = data.date || '';
+    
+    schoolInput.value = matchInfo.school;
+    matchDateInput.value = matchInfo.date;
+  }
+}
+
+// 初始化時加載比賽信息
+loadMatchInfoFromLocalStorage();
+
+updateScoreDisplay();
+updateScoreBtnsStyle(); // 初始化按鈕樣式
+
+

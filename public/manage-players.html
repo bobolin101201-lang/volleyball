@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>管理我方球員</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      .manage-container {
+        max-width: 600px;
+        margin: 60px auto 32px;
+        padding: 0 1.5rem;
+      }
+
+      .player-input-group {
+        display: flex;
+        gap: 12px;
+        margin-bottom: 24px;
+      }
+
+      .player-input-group input {
+        flex: 1;
+        border: 1px solid #d0d7e2;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-size: 1rem;
+      }
+
+      .player-input-group button {
+        border: none;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #2563eb, #1d4ed8);
+        color: #ffffff;
+        padding: 10px 18px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .players-list {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .player-item {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        background-color: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 12px 16px;
+      }
+
+      .player-item button {
+        background-color: #ff4757;
+        color: white;
+        border: none;
+        border-radius: 6px;
+        padding: 6px 12px;
+        cursor: pointer;
+        font-size: 0.85rem;
+      }
+
+      .player-item button:hover {
+        background-color: #ff3838;
+      }
+
+      .back-link {
+        display: inline-block;
+        margin-bottom: 24px;
+        color: #1d4ed8;
+        text-decoration: none;
+        font-weight: 600;
+      }
+
+      .back-link:hover {
+        text-decoration: underline;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>管理我方球員</h1>
+    </header>
+    <main>
+      <div class="manage-container">
+        <a href="/" class="back-link">← 回到比賽紀錄</a>
+        
+        <div class="card">
+          <h2>新增球員</h2>
+          <div class="player-input-group">
+            <input
+              type="text"
+              id="player-name-input"
+              placeholder="輸入球員名稱"
+              aria-label="輸入球員名稱"
+            />
+            <button type="button" id="add-player-btn">新增</button>
+          </div>
+
+          <h2>球員列表</h2>
+          <div class="players-list" id="players-list"></div>
+        </div>
+      </div>
+    </main>
+    <script>
+      const playerInput = document.getElementById('player-name-input');
+      const addPlayerBtn = document.getElementById('add-player-btn');
+      const playersList = document.getElementById('players-list');
+
+      // 取得所有球員
+      async function loadPlayers() {
+        try {
+          const res = await fetch('/api/our-players');
+          const players = await res.json();
+          renderPlayers(players);
+        } catch (err) {
+          console.error('載入球員失敗:', err);
+        }
+      }
+
+      // 渲染球員列表
+      function renderPlayers(players) {
+        playersList.innerHTML = '';
+        if (players.length === 0) {
+          playersList.innerHTML =
+            '<p style="text-align: center; color: #999;">還沒有球員</p>';
+          return;
+        }
+
+        players.forEach((player) => {
+          const div = document.createElement('div');
+          div.className = 'player-item';
+          div.innerHTML = `
+            <span>${player.name}</span>
+            <button type="button" onclick="deletePlayer(${player.id})">刪除</button>
+          `;
+          playersList.appendChild(div);
+        });
+      }
+
+      // 新增球員
+      addPlayerBtn.addEventListener('click', async () => {
+        const name = playerInput.value.trim();
+        if (!name) return;
+
+        try {
+          const res = await fetch('/api/our-players', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name }),
+          });
+          const player = await res.json();
+          playerInput.value = '';
+          loadPlayers();
+        } catch (err) {
+          console.error('新增球員失敗:', err);
+          alert('新增失敗，該球員可能已存在');
+        }
+      });
+
+      // 刪除球員
+      async function deletePlayer(id) {
+        if (!confirm('確認刪除？')) return;
+        try {
+          await fetch(`/api/our-players/${id}`, { method: 'DELETE' });
+          loadPlayers();
+        } catch (err) {
+          console.error('刪除球員失敗:', err);
+        }
+      }
+
+      // 初始化
+      loadPlayers();
+
+      // 按 Enter 新增
+      playerInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') addPlayerBtn.click();
+      });
+    </script>
+  </body>
+</html>

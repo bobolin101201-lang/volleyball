@@ -1,0 +1,184 @@
+﻿<!DOCTYPE html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>排球比賽紀錄</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header>
+      <div class="scoreboard" aria-live="polite">
+        <span class="score-label">比分</span>
+        <span class="score-value" id="score-display">0 : 0</span>
+      </div>
+      <h1>排球比賽紀錄</h1>
+      <div style="position: absolute; top: 18px; left: 20px; color: white; font-size: 0.9rem;">
+        <span>比賽 ID: <strong id="match-id-display">-</strong></span>
+        <button id="new-match-btn" style="background-color: #3b82f6; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-left: 20px; cursor: pointer; font-weight: 600; font-size: 0.9rem; display: none;">新增比賽</button>
+        <a href="manage-players.html" style="color: white; margin-left: 20px; text-decoration: none; font-weight: 600;">管理球員</a>
+        <a href="history.html" style="color: white; margin-left: 20px; text-decoration: none; font-weight: 600;">歷史記錄</a>
+        <div class="set-points-toggle" style="margin-left: 20px; display: inline-flex; align-items: center; gap: 8px;">
+          <span style="font-size: 0.8rem;">15分</span>
+          <label class="toggle-switch">
+            <input type="checkbox" id="set-points-toggle">
+            <span class="toggle-slider"></span>
+          </label> 
+          <span style="font-size: 0.8rem;">25分</span>
+        </div>
+      </div>
+    </header>
+    <main>
+      <section class="card lineup-card">
+        <div class="lineup-card-header">
+          <h2>上場球員</h2>
+          <div class="match-info-inputs">
+            <div class="info-input-group">
+              <label for="school-input">學校名稱</label>
+              <input
+                type="text"
+                id="school-input"
+                placeholder="輸入隊上學校"
+                aria-label="輸入隊上學校"
+              />
+            </div>
+            <div class="info-input-group">
+              <label for="match-date-input">比賽日期</label>
+              <input
+                type="date"
+                id="match-date-input"
+                aria-label="輸入比賽日期"
+              />
+            </div>
+          </div>
+        </div>
+        <div class="lineup-columns">
+          <div class="lineup-inputs-section">
+            <div class="lineup-input-group">
+              <h3>我方</h3>
+              <div class="lineup-input">
+                <select
+                  id="our-player-select"
+                  aria-label="選擇我方球員"
+                  style="flex: 0 1 220px; border: 1px solid #d0d7e2; border-radius: 8px; padding: 10px 12px; font-size: 1rem; font-family: inherit;"
+                >
+                  <option value="">-- 選擇球員 --</option>
+                </select>
+                <button type="button" id="add-our-player-btn">加入</button>
+              </div>
+            </div>
+            <div class="lineup-input-group">
+              <h3>對手</h3>
+              <div class="lineup-input">
+                <input
+                  type="text"
+                  id="opponent-player-input"
+                  placeholder="輸入球員名稱"
+                  aria-label="輸入對手球員名稱"
+                />
+                <button type="button" id="add-opponent-player-btn">加入</button>
+              </div>
+            </div>
+          </div>
+          <div class="lineup-lists-section">
+            <div class="lineup-list-group">
+              <h3>我方</h3>
+              <div class="player-list" id="our-player-list" aria-live="polite"></div>
+            </div>
+            <div class="lineup-list-group">
+              <h3>對手</h3>
+              <div class="player-list" id="opponent-player-list" aria-live="polite"></div>
+            </div>
+          </div>
+        </div>
+        <div class="score-controls">
+          <button type="button" id="score-plus-btn" class="score-btn score-btn--plus">得分</button>
+          <button type="button" id="score-minus-btn" class="score-btn score-btn--minus">失分</button>
+          <button type="button" id="score-neutral-btn" class="score-btn score-btn--neutral">公正</button>
+          <button type="button" id="clear-opponent-players-btn" class="score-btn score-btn--clear">刪除對方球員</button>
+          <button type="button" id="next-set-btn" class="score-btn score-btn--next">下一局</button>
+          <button type="button" id="reset-match-btn" class="score-btn score-btn--reset">結束比賽</button>
+        </div>
+        <p id="match-result" class="match-result" aria-live="polite"></p>
+      </section>
+
+      <section class="card stats-card">
+        <h2>接球品質統計</h2>
+        <div class="stats-columns">
+          <div class="stats-column">
+            <h3>我方統計</h3>
+            <table class="player-stats-table">
+              <thead>
+                <tr>
+                  <th>球員名稱</th>
+                  <th>A級</th>
+                  <th>B級</th>
+                  <th>C級</th>
+                  <th>D級</th>
+                </tr>
+              </thead>
+              <tbody id="our-stats-table">
+              </tbody>
+            </table>
+          </div>
+          <div class="stats-column">
+            <h3>對方統計</h3>
+            <table class="player-stats-table">
+              <thead>
+                <tr>
+                  <th>球員名稱</th>
+                  <th>A級</th>
+                  <th>B級</th>
+                  <th>C級</th>
+                  <th>D級</th>
+                </tr>
+              </thead>
+              <tbody id="opponent-stats-table">
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="card stats-card">
+        <h2>得分/失分原因統計</h2>
+        <div class="stats-columns">
+          <div class="stats-column">
+            <h3>得分原因</h3>
+            <table class="player-stats-table">
+              <thead>
+                <tr>
+                  <th>原因</th>
+                  <th>次數</th>
+                </tr>
+              </thead>
+              <tbody id="score-reason-stats-table">
+              </tbody>
+            </table>
+          </div>
+          <div class="stats-column">
+            <h3>失分原因</h3>
+            <table class="player-stats-table">
+              <thead>
+                <tr>
+                  <th>原因</th>
+                  <th>次數</th>
+                </tr>
+              </thead>
+              <tbody id="loss-reason-stats-table">
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="card stats-card">
+        <h2>我方球員得失分統計</h2>
+        <div class="player-reason-stats-container" id="player-reason-stats-container">
+        </div>
+      </section>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>
+
