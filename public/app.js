@@ -48,12 +48,7 @@ async function checkAndSyncActiveMatch() {
       console.log(`[Polling] ✓ 分配新比賽: ${serverMatchId}`);
       // 不呼叫 createMatchInDatabase，比賽可能已經存在
       // 直接載入
-      try {
-        await loadMatchFromDatabase();
-        console.log(`[Polling] ✓ 新比賽載入完成: ${serverMatchId}`);
-      } catch (err) {
-        console.error(`[Polling] 載入新比賽失敗:`, err);
-      }
+      await loadMatchFromDatabase();
       return;
     }
     
@@ -63,12 +58,7 @@ async function checkAndSyncActiveMatch() {
       matchInfo.match_id = serverMatchId;
       matchIdDisplay.textContent = matchInfo.match_id;
       localStorage.setItem('currentMatchId', serverMatchId);
-      try {
-        await loadMatchFromDatabase();
-        console.log(`[Polling] ✓ 比賽改變後已重新載入: ${serverMatchId}`);
-      } catch (err) {
-        console.error(`[Polling] 重新載入比賽失敗:`, err);
-      }
+      await loadMatchFromDatabase();
     }
   } catch (err) {
     console.error('[Polling] 檢查/同步失敗:', err);
@@ -230,13 +220,9 @@ async function initializeMatch() {
     matchInfo.match_id = localMatchId;
     matchIdDisplay.textContent = matchInfo.match_id;
     currentMatchActive = true;
-    // ⚠️ 等待載入完成，不要忽略錯誤
-    try {
-      await loadMatchFromDatabase();
-      console.log('[Init] ✓ 本地比賽載入完成');
-    } catch (err) {
+    loadMatchFromDatabase().catch(err => {
       console.log('[Init] 載入本地比賽失敗:', err);
-    }
+    });
   } else {
     console.log('[Init] 沒有本地比賽 ID，從伺服器同步...');
     // 新用戶或 localStorage 被清除，直接從伺服器取得
@@ -251,7 +237,6 @@ async function initializeMatch() {
         // 不呼叫 createMatchInDatabase()，因為比賽可能已存在
         // 直接載入
         await loadMatchFromDatabase();
-        console.log('[Init] ✓ 新用戶比賽載入完成');
       }
     } catch (err) {
       console.error('[Init] 初始化比賽 ID 失敗:', err);
@@ -368,16 +353,10 @@ async function loadLineupFromDatabase() {
 // 從資料庫載入統計
 async function loadStatsFromDatabase() {
   try {
-    console.log('[Stats] 開始載入統計數據，matchId:', matchInfo.match_id);
     const res = await fetch(`/api/match-stats/${matchInfo.match_id}`);
-    if (!res.ok) {
-      console.log('[Stats] API 返回非 200 狀態:', res.status);
-      return;
-    }
+    if (!res.ok) return;
     
     const matchStats = await res.json();
-    console.log('[Stats] 取得的統計數據:', matchStats);
-    
     stats.ours = {};
     stats.opponent = {};
     
@@ -389,9 +368,7 @@ async function loadStatsFromDatabase() {
       stats[teamKey][stat.player_name][stat.grade] = stat.count;
     });
     
-    console.log('[Stats] 處理完後的 stats 物件:', stats);
     updateStatsDisplay();
-    console.log('[Stats] 統計表已更新顯示');
   } catch (err) {
     console.error('載入統計失敗:', err);
   }
@@ -678,11 +655,9 @@ function updateScoreBtnsStyle() {
 }
 
 function clearAllDisplayedGrades(exceptPlayerId) {
-  console.log('[Grade] 清除所有 grades，除了:', exceptPlayerId);
   Object.keys(lineupState).forEach(teamKey => {
     lineupState[teamKey].forEach((player) => {
       if (player.id !== exceptPlayerId) {
-        console.log('[Grade] 清除球員 grade:', player.name, '原本 grade:', player.grade);
         player.grade = null;
       }
     });
@@ -700,21 +675,17 @@ function clearAllDisplayedGrades(exceptPlayerId) {
 }
 
 function setPlayerGrade(teamKey, playerId, grade) {
-  console.log('[Grade] 設定球員 grade:', { teamKey, playerId, grade });
-  
   if (currentGradedPlayerId && currentGradedPlayerId !== playerId) {
     clearAllDisplayedGrades(playerId);
   }
 
   const player = lineupState[teamKey].find((item) => item.id === playerId);
   if (!player) {
-    console.error('[Grade] 找不到球員:', { teamKey, playerId });
     return;
   }
 
   player.grade = grade;
   player.lastUpdatedAt = new Date().toISOString();
-  console.log('[Grade] 球員 grade 已設定:', { name: player.name, grade, lineupStateAfter: player });
   
   const button = teams[teamKey].list.querySelector(`[data-player-id="${playerId}"]`);
   if (button) {
@@ -723,15 +694,10 @@ function setPlayerGrade(teamKey, playerId, grade) {
   
   currentGradedPlayerId = playerId;
   hasGradedPlayer = true;
-  console.log('[Grade] hasGradedPlayer 已設定為 true');
   updateScoreBtnsStyle();
 }
 
 function updateStats(teamKey, playerId, playerName, grade) {
-  console.log('[UpdateStats] 呼叫 updateStats:', { teamKey, playerId, playerName, grade });
-  console.log('[UpdateStats] displayedGrades:', displayedGrades);
-  console.log('[UpdateStats] grade 是否在 displayedGrades:', displayedGrades.includes(grade));
-  
   if (displayedGrades.includes(grade)) {
     if (!stats[teamKey][playerName]) {
       stats[teamKey][playerName] = {
@@ -739,9 +705,6 @@ function updateStats(teamKey, playerId, playerName, grade) {
       };
     }
     stats[teamKey][playerName][grade]++;
-    console.log('[UpdateStats] 統計已更新:', stats[teamKey][playerName]);
-  } else {
-    console.log('[UpdateStats] Grade 不在 displayedGrades 中，跳過');
   }
   updateStatsDisplay();
 }
@@ -749,23 +712,14 @@ function updateStats(teamKey, playerId, playerName, grade) {
 function updateStatsDisplay() {
   const ourStatsTable = document.getElementById('our-stats-table');
   const opponentStatsTable = document.getElementById('opponent-stats-table');
-  
-  console.log('[Display] 開始更新統計表，DOM 元素:', { ourStatsTable, opponentStatsTable });
-  console.log('[Display] 目前 stats:', stats);
 
   [
     { key: 'ours', tableBody: ourStatsTable },
     { key: 'opponent', tableBody: opponentStatsTable }
   ].forEach(({ key, tableBody }) => {
-    if (!tableBody) {
-      console.error(`[Display] 找不到表格元素: ${key}`);
-      return;
-    }
-    
     tableBody.innerHTML = '';
 
     const statsArray = Object.entries(stats[key]);
-    console.log(`[Display] ${key} 統計數據:`, statsArray);
 
     if (key === 'opponent') {
       statsArray.sort(([, aStats], [, bStats]) => {
@@ -791,12 +745,9 @@ function updateStatsDisplay() {
     });
 
     if (tableBody.children.length === 0) {
-      console.log(`[Display] ${key} 表格為空，顯示提示訊息`);
       const emptyRow = document.createElement('tr');
       emptyRow.innerHTML = '<td colspan="5" style="text-align: center; color: #999;">尚無統計數據</td>';
       tableBody.appendChild(emptyRow);
-    } else {
-      console.log(`[Display] ${key} 表格已更新，共 ${tableBody.children.length} 行資料`);
     }
   });
 }
@@ -1015,19 +966,10 @@ async function saveMatchToDatabase() {
 
 async function saveStatToDatabase(teamKey, playerName, grade) {
   try {
-    console.log('[SaveStat] 嘗試保存統計:', { teamKey, playerName, grade });
     const player = lineupState[teamKey].find(p => p.name === playerName);
-    console.log('[SaveStat] 找到的球員:', player);
     // 使用 fullName（包含學校前綴）來保存到資料庫
     const dbPlayerName = player?.fullName || playerName;
-    console.log('[SaveStat] 準備發送到 API:', {
-      match_id: matchInfo.match_id,
-      player_id: player?.id || null,
-      player_name: dbPlayerName,
-      team: teamKey,
-      grade,
-    });
-    const response = await fetch('/api/match-stats', {
+    await fetch('/api/match-stats', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1038,11 +980,8 @@ async function saveStatToDatabase(teamKey, playerName, grade) {
         grade,
       }),
     });
-    console.log('[SaveStat] API 回應狀態:', response.status);
-    const responseData = await response.json();
-    console.log('[SaveStat] API 回應內容:', responseData);
   } catch (err) {
-    console.error('[SaveStat] 保存統計失敗:', err);
+    console.error('保存統計失敗:', err);
   }
 }
 

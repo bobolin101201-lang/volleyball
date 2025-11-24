@@ -234,16 +234,14 @@ app.delete('/api/match-lineups/:id', async (req, res) => {
 app.get('/api/match-stats/:match_id', async (req, res) => {
   try {
     const { match_id } = req.params;
-    console.log('[API] GET /api/match-stats 被呼叫, match_id:', match_id);
     const { data, error } = await supabase
       .from('match_stats')
       .select('*')
       .eq('match_id', match_id);
     if (error) throw error;
-    console.log('[API] 返回統計數據:', data);
     res.json(data);
   } catch (err) {
-    console.error('[API] GET 統計錯誤:', err);
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -252,7 +250,6 @@ app.get('/api/match-stats/:match_id', async (req, res) => {
 app.post('/api/match-stats', async (req, res) => {
   try {
     const { match_id, player_id, player_name, team, grade } = req.body;
-    console.log('[API] POST /api/match-stats 被呼叫', { match_id, player_id, player_name, team, grade });
     
     // 先查找是否已存在
     const { data: existing, error: queryError } = await supabase
@@ -265,32 +262,26 @@ app.post('/api/match-stats', async (req, res) => {
     
     if (queryError) throw queryError;
     
-    console.log('[API] 已存在的紀錄:', existing);
-    
     if (existing && existing.length > 0) {
       // 更新計數
-      console.log('[API] 更新現有紀錄');
       const { data, error } = await supabase
         .from('match_stats')
         .update({ count: existing[0].count + 1 })
         .eq('id', existing[0].id)
         .select();
       if (error) throw error;
-      console.log('[API] 更新完成:', data);
       return res.json(data[0]);
     }
     
     // 新增統計
-    console.log('[API] 新增統計');
     const { data, error } = await supabase
       .from('match_stats')
       .insert([{ match_id, player_id, player_name, team, grade, count: 1 }])
       .select();
     if (error) throw error;
-    console.log('[API] 新增完成:', data);
     res.json(data[0]);
   } catch (err) {
-    console.error('[API] POST 統計錯誤:', err);
+    console.error(err);
     res.status(500).json({ error: err.message });
   }
 });
