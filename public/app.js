@@ -58,8 +58,11 @@ async function checkAndSyncActiveMatch() {
       matchInfo.match_id = serverMatchId;
       matchIdDisplay.textContent = matchInfo.match_id;
       localStorage.setItem('currentMatchId', serverMatchId);
+      // ✅ 只在其他欄位改變時才重新載入（不是每次都載入）
+      // 這樣可以避免用戶正在編輯時被打斷
       await loadMatchFromDatabase();
     }
+    // ✅ 刪除：如果 ID 相同就不重新載入，避免不必要的重新整理
   } catch (err) {
     console.error('[Polling] 檢查/同步失敗:', err);
   }
@@ -220,7 +223,8 @@ async function initializeMatch() {
     matchInfo.match_id = localMatchId;
     matchIdDisplay.textContent = matchInfo.match_id;
     currentMatchActive = true;
-    loadMatchFromDatabase().catch(err => {
+    // 等待載入完成後再繼續
+    await loadMatchFromDatabase().catch(err => {
       console.log('[Init] 載入本地比賽失敗:', err);
     });
   } else {
@@ -251,7 +255,7 @@ async function initializeMatch() {
   maxPointsPerSet = 25;
   setPointsToggle.checked = true;
   
-  // 啟動 polling 機制
+  // ✅ 重要：在所有初始化完成後才啟動 polling
   startPolling();
 }
 
@@ -536,6 +540,13 @@ function updatePlayerListsDisplay() {
 }
 
 async function addPlayer(teamKey) {
+  // ✅ 檢查比賽 ID 是否存在
+  if (!matchInfo.match_id) {
+    console.error('[AddPlayer] 錯誤：比賽 ID 未初始化，無法新增球員');
+    alert('比賽還未初始化，請稍候片刻後重試');
+    return;
+  }
+  
   let playerName, playerId;
   
   if (teamKey === 'ours') {
@@ -579,7 +590,7 @@ async function addPlayer(teamKey) {
 
   // 存到資料庫
   try {
-    await fetch('/api/match-lineups', {
+    const response = await fetch('/api/match-lineups', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -589,8 +600,20 @@ async function addPlayer(teamKey) {
         team: teamKey,
       }),
     });
+    
+    if (!response.ok) {
+      console.error('[AddPlayer] 伺服器錯誤:', response.status, response.statusText);
+      throw new Error(`伺服器返回錯誤: ${response.status}`);
+    }
+    
+    console.log('[AddPlayer] 球員已成功保存到資料庫:', { teamKey, playerName, matchId: matchInfo.match_id });
   } catch (err) {
-    console.error('新增球員失敗:', err);
+    console.error('[AddPlayer] 新增球員失敗:', err);
+    alert('新增球員失敗，請檢查連線或稍後重試');
+    // 如果保存失敗，移除本地的球員
+    lineupState[teamKey].pop();
+    updatePlayerListsDisplay();
+    return;
   }
 
   updatePlayerListsDisplay();
