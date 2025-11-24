@@ -27,8 +27,8 @@ app.get('/api/our-players', async (req, res) => {
     console.log('[DEBUG] Getting our-players...');
     const { data, error } = await supabase
       .from('our_players')
-      .select('*')
-      .order('name');
+      .select('id, name')
+      .order('name', { ascending: true });
     
     if (error) {
       console.error('[ERROR] Supabase query error:', error);
@@ -38,8 +38,8 @@ app.get('/api/our-players', async (req, res) => {
     console.log('[DEBUG] Successfully retrieved players:', data?.length || 0);
     res.json(data || []);
   } catch (err) {
-    console.error('[ERROR] /api/our-players failed:', err.message || err);
-    res.status(500).json({ error: err.message || 'Internal server error' });
+    console.error('[ERROR] /api/our-players failed:', {message: err.message, err});
+    res.status(500).json({ error: err.message || 'Internal server error', details: err });
   }
 });
 
