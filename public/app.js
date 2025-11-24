@@ -368,10 +368,16 @@ async function loadLineupFromDatabase() {
 // 從資料庫載入統計
 async function loadStatsFromDatabase() {
   try {
+    console.log('[Stats] 開始載入統計數據，matchId:', matchInfo.match_id);
     const res = await fetch(`/api/match-stats/${matchInfo.match_id}`);
-    if (!res.ok) return;
+    if (!res.ok) {
+      console.log('[Stats] API 返回非 200 狀態:', res.status);
+      return;
+    }
     
     const matchStats = await res.json();
+    console.log('[Stats] 取得的統計數據:', matchStats);
+    
     stats.ours = {};
     stats.opponent = {};
     
@@ -383,7 +389,9 @@ async function loadStatsFromDatabase() {
       stats[teamKey][stat.player_name][stat.grade] = stat.count;
     });
     
+    console.log('[Stats] 處理完後的 stats 物件:', stats);
     updateStatsDisplay();
+    console.log('[Stats] 統計表已更新顯示');
   } catch (err) {
     console.error('載入統計失敗:', err);
   }
@@ -727,14 +735,23 @@ function updateStats(teamKey, playerId, playerName, grade) {
 function updateStatsDisplay() {
   const ourStatsTable = document.getElementById('our-stats-table');
   const opponentStatsTable = document.getElementById('opponent-stats-table');
+  
+  console.log('[Display] 開始更新統計表，DOM 元素:', { ourStatsTable, opponentStatsTable });
+  console.log('[Display] 目前 stats:', stats);
 
   [
     { key: 'ours', tableBody: ourStatsTable },
     { key: 'opponent', tableBody: opponentStatsTable }
   ].forEach(({ key, tableBody }) => {
+    if (!tableBody) {
+      console.error(`[Display] 找不到表格元素: ${key}`);
+      return;
+    }
+    
     tableBody.innerHTML = '';
 
     const statsArray = Object.entries(stats[key]);
+    console.log(`[Display] ${key} 統計數據:`, statsArray);
 
     if (key === 'opponent') {
       statsArray.sort(([, aStats], [, bStats]) => {
@@ -760,9 +777,12 @@ function updateStatsDisplay() {
     });
 
     if (tableBody.children.length === 0) {
+      console.log(`[Display] ${key} 表格為空，顯示提示訊息`);
       const emptyRow = document.createElement('tr');
       emptyRow.innerHTML = '<td colspan="5" style="text-align: center; color: #999;">尚無統計數據</td>';
       tableBody.appendChild(emptyRow);
+    } else {
+      console.log(`[Display] ${key} 表格已更新，共 ${tableBody.children.length} 行資料`);
     }
   });
 }
