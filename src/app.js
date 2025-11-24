@@ -9,9 +9,17 @@ app.use(cors());
 app.use(express.json());
 
 // Supabase 初始化
-const supabaseUrl = 'https://arymmivalnqfgitdwbdd.supabase.co';
-const supabaseKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFyeW1taXZhbG5xZmdpdGR3YmRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM1MzkwMTMsImV4cCI6MjA3OTExNTAxM30.hvtHTZG-Yq7HcjdblELzAoFRCjLyfl5SkTdcQ_lwaOI';
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabaseUrl = process.env.SUPABASE_URL || 'https://arymmivalnqfgitdwbdd.supabase.co';
+const supabaseKey = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFyeW1taXZhbG5xZmdpdGR3YmRkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjM1MzkwMTMsImV4cCI6MjA3OTExNTAxM30.hvtHTZG-Yq7HcjdblELzAoFRCjLyfl5SkTdcQ_lwaOI';
+let supabase;
+
+try {
+  supabase = createClient(supabaseUrl, supabaseKey);
+  console.log('[INIT] Supabase client created successfully');
+} catch (err) {
+  console.error('[INIT] Failed to create Supabase client:', err);
+  process.exit(1);
+}
 
 const publicDir = path.join(__dirname, '../public');
 app.use(express.static(publicDir));
