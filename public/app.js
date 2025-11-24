@@ -678,9 +678,11 @@ function updateScoreBtnsStyle() {
 }
 
 function clearAllDisplayedGrades(exceptPlayerId) {
+  console.log('[Grade] 清除所有 grades，除了:', exceptPlayerId);
   Object.keys(lineupState).forEach(teamKey => {
     lineupState[teamKey].forEach((player) => {
       if (player.id !== exceptPlayerId) {
+        console.log('[Grade] 清除球員 grade:', player.name, '原本 grade:', player.grade);
         player.grade = null;
       }
     });
@@ -698,17 +700,21 @@ function clearAllDisplayedGrades(exceptPlayerId) {
 }
 
 function setPlayerGrade(teamKey, playerId, grade) {
+  console.log('[Grade] 設定球員 grade:', { teamKey, playerId, grade });
+  
   if (currentGradedPlayerId && currentGradedPlayerId !== playerId) {
     clearAllDisplayedGrades(playerId);
   }
 
   const player = lineupState[teamKey].find((item) => item.id === playerId);
   if (!player) {
+    console.error('[Grade] 找不到球員:', { teamKey, playerId });
     return;
   }
 
   player.grade = grade;
   player.lastUpdatedAt = new Date().toISOString();
+  console.log('[Grade] 球員 grade 已設定:', { name: player.name, grade, lineupStateAfter: player });
   
   const button = teams[teamKey].list.querySelector(`[data-player-id="${playerId}"]`);
   if (button) {
@@ -717,10 +723,15 @@ function setPlayerGrade(teamKey, playerId, grade) {
   
   currentGradedPlayerId = playerId;
   hasGradedPlayer = true;
+  console.log('[Grade] hasGradedPlayer 已設定為 true');
   updateScoreBtnsStyle();
 }
 
 function updateStats(teamKey, playerId, playerName, grade) {
+  console.log('[UpdateStats] 呼叫 updateStats:', { teamKey, playerId, playerName, grade });
+  console.log('[UpdateStats] displayedGrades:', displayedGrades);
+  console.log('[UpdateStats] grade 是否在 displayedGrades:', displayedGrades.includes(grade));
+  
   if (displayedGrades.includes(grade)) {
     if (!stats[teamKey][playerName]) {
       stats[teamKey][playerName] = {
@@ -728,6 +739,9 @@ function updateStats(teamKey, playerId, playerName, grade) {
       };
     }
     stats[teamKey][playerName][grade]++;
+    console.log('[UpdateStats] 統計已更新:', stats[teamKey][playerName]);
+  } else {
+    console.log('[UpdateStats] Grade 不在 displayedGrades 中，跳過');
   }
   updateStatsDisplay();
 }
@@ -1001,10 +1015,19 @@ async function saveMatchToDatabase() {
 
 async function saveStatToDatabase(teamKey, playerName, grade) {
   try {
+    console.log('[SaveStat] 嘗試保存統計:', { teamKey, playerName, grade });
     const player = lineupState[teamKey].find(p => p.name === playerName);
+    console.log('[SaveStat] 找到的球員:', player);
     // 使用 fullName（包含學校前綴）來保存到資料庫
     const dbPlayerName = player?.fullName || playerName;
-    await fetch('/api/match-stats', {
+    console.log('[SaveStat] 準備發送到 API:', {
+      match_id: matchInfo.match_id,
+      player_id: player?.id || null,
+      player_name: dbPlayerName,
+      team: teamKey,
+      grade,
+    });
+    const response = await fetch('/api/match-stats', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -1015,8 +1038,11 @@ async function saveStatToDatabase(teamKey, playerName, grade) {
         grade,
       }),
     });
+    console.log('[SaveStat] API 回應狀態:', response.status);
+    const responseData = await response.json();
+    console.log('[SaveStat] API 回應內容:', responseData);
   } catch (err) {
-    console.error('保存統計失敗:', err);
+    console.error('[SaveStat] 保存統計失敗:', err);
   }
 }
 
