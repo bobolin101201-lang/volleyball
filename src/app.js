@@ -414,6 +414,104 @@ app.delete('/api/matches/:match_id', async (req, res) => {
   }
 });
 
+// ===== 比賽狀態管理 (Polling) =====
+// 內存存儲 - 比賽狀態
+let activeMatchId = null;
+let lastActivityTime = null;
+const MATCH_TIMEOUT = 5 * 60 * 1000; // 5分鐘無活動就清除比賽
+
+// 生成短碼作為比賽 ID
+function generateMatchId() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+// 取得或建立活躍比賽
+function getActiveMatch() {
+  const now = Date.now();
+  
+  // 檢查比賽是否過期（超過5分鐘無活動）
+  if (activeMatchId && lastActivityTime && (now - lastActivityTime) > MATCH_TIMEOUT) {
+    console.log(`[Polling] 比賽 ${activeMatchId} 因無活動已過期（閒置超過 5 分鐘）`);
+    activeMatchId = null;
+    lastActivityTime = null;
+  }
+  
+  // 如果沒有活躍比賽，建立新的
+  if (!activeMatchId) {
+    activeMatchId = generateMatchId();
+    lastActivityTime = now;
+    console.log(`[Polling] ✓ 建立新比賽: ${activeMatchId}`);
+  } else {
+    const idleSeconds = Math.round((now - lastActivityTime) / 1000);
+    console.log(`[Polling] 復用現有比賽: ${activeMatchId}, 距上次活動 ${idleSeconds} 秒`);
+  }
+  
+  return activeMatchId;
+}
+
+// 更新最後活動時間
+function updateActivityTime() {
+  const oldTime = lastActivityTime;
+  lastActivityTime = Date.now();
+  const idleSeconds = oldTime ? Math.round((lastActivityTime - oldTime) / 1000) : 0;
+  console.log(`[Polling] 活動時間已更新，比賽 ${activeMatchId} 保活中（距上次更新 ${idleSeconds} 秒）`);
+}
+
+// API 端點：取得活躍比賽 ID
+app.get('/api/active-match', async (req, res) => {
+  try {
+    const matchId = getActiveMatch();
+    
+    // 檢查此比賽在資料庫中是否存在
+    const { data: existingMatch, error: queryError } = await supabase
+      .from('matches')
+      .select('match_id')
+      .eq('match_id', matchId)
+      .single();
+    
+    // 如果比賽不存在，建立新的空比賽記錄
+    if (!existingMatch && (!queryError || queryError.code === 'PGRST116')) {
+      console.log(`[API] 比賽 ${matchId} 在資料庫中不存在，建立新記錄`);
+      const { error: insertError } = await supabase
+        .from('matches')
+        .insert([{
+          match_id: matchId,
+          school: '',
+          date: new Date().toISOString().split('T')[0],
+          our_score: 0,
+          opponent_score: 0,
+          status: 'ongoing'
+        }]);
+      
+      if (insertError) {
+        console.error(`[API] 建立比賽記錄失敗:`, insertError);
+      } else {
+        console.log(`[API] 比賽記錄已建立: ${matchId}`);
+      }
+    }
+    
+    // 每次有客戶端檢查時，更新活動時間（代表有人在用這個比賽）
+    updateActivityTime();
+    console.log(`[API] GET /api/active-match -> 返回比賽 ID: ${matchId}`);
+    res.json({ match_id: matchId });
+  } catch (err) {
+    console.error('[API] GET /api/active-match 失敗:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// API 端點：報告活動（客戶端定期調用來保持連線）
+app.post('/api/report-activity', (req, res) => {
+  updateActivityTime();
+  console.log(`[API] POST /api/report-activity -> 活動已報告`);
+  res.json({ success: true });
+});
+
 app.use((req, res, next) => {
   if (req.method === 'GET' && !req.path.startsWith('/api/')) {
     res.sendFile(path.join(publicDir, 'index.html'));

@@ -46,7 +46,8 @@ async function checkAndSyncActiveMatch() {
       matchIdDisplay.textContent = matchInfo.match_id;
       localStorage.setItem('currentMatchId', serverMatchId);
       console.log(`[Polling] ✓ 分配新比賽: ${serverMatchId}`);
-      await createMatchInDatabase();
+      // 不呼叫 createMatchInDatabase，比賽可能已經存在
+      // 直接載入
       await loadMatchFromDatabase();
       return;
     }
