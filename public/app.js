@@ -48,7 +48,12 @@ async function checkAndSyncActiveMatch() {
       console.log(`[Polling] ✓ 分配新比賽: ${serverMatchId}`);
       // 不呼叫 createMatchInDatabase，比賽可能已經存在
       // 直接載入
-      await loadMatchFromDatabase();
+      try {
+        await loadMatchFromDatabase();
+        console.log(`[Polling] ✓ 新比賽載入完成: ${serverMatchId}`);
+      } catch (err) {
+        console.error(`[Polling] 載入新比賽失敗:`, err);
+      }
       return;
     }
     
@@ -58,7 +63,12 @@ async function checkAndSyncActiveMatch() {
       matchInfo.match_id = serverMatchId;
       matchIdDisplay.textContent = matchInfo.match_id;
       localStorage.setItem('currentMatchId', serverMatchId);
-      await loadMatchFromDatabase();
+      try {
+        await loadMatchFromDatabase();
+        console.log(`[Polling] ✓ 比賽改變後已重新載入: ${serverMatchId}`);
+      } catch (err) {
+        console.error(`[Polling] 重新載入比賽失敗:`, err);
+      }
     }
   } catch (err) {
     console.error('[Polling] 檢查/同步失敗:', err);
@@ -220,9 +230,13 @@ async function initializeMatch() {
     matchInfo.match_id = localMatchId;
     matchIdDisplay.textContent = matchInfo.match_id;
     currentMatchActive = true;
-    loadMatchFromDatabase().catch(err => {
+    // ⚠️ 等待載入完成，不要忽略錯誤
+    try {
+      await loadMatchFromDatabase();
+      console.log('[Init] ✓ 本地比賽載入完成');
+    } catch (err) {
       console.log('[Init] 載入本地比賽失敗:', err);
-    });
+    }
   } else {
     console.log('[Init] 沒有本地比賽 ID，從伺服器同步...');
     // 新用戶或 localStorage 被清除，直接從伺服器取得
@@ -237,6 +251,7 @@ async function initializeMatch() {
         // 不呼叫 createMatchInDatabase()，因為比賽可能已存在
         // 直接載入
         await loadMatchFromDatabase();
+        console.log('[Init] ✓ 新用戶比賽載入完成');
       }
     } catch (err) {
       console.error('[Init] 初始化比賽 ID 失敗:', err);
