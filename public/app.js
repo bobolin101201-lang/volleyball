@@ -4,6 +4,7 @@ const displayedGrades = ['A', 'B', 'C', 'D'];
 // ===== 比賽 ID 同步管理 (Polling) =====
 let pollingInterval = null;
 let firstPollDone = false;
+let skipNextSync = false; // 防止結束比賽後立即同步舊資料
 
 function startPolling() {
   // 立即檢查一次
@@ -23,6 +24,13 @@ function stopPolling() {
 
 async function checkAndSyncActiveMatch() {
   try {
+    // 防止結束比賽後立即同步舊資料
+    if (skipNextSync) {
+      console.log('[Polling] 跳過同步（剛結束比賽）');
+      skipNextSync = false;
+      return;
+    }
+    
     // 1. 同時檢查伺服器比賽 ID 和報告活動
     const responses = await Promise.all([
       fetch('/api/active-match'),
@@ -1053,6 +1061,9 @@ function resetMatch() {
   
   // 儲存空白比賽到資料庫
   saveMatchToDatabase();
+  
+  // 防止下一次 polling 立即拉回舊資料
+  skipNextSync = true;
   
   // 產生新的比賽ID準備下一場比賽
   matchInfo.match_id = generateMatchId();
