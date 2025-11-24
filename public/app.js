@@ -369,6 +369,8 @@ async function loadLineupFromDatabase() {
 async function loadStatsFromDatabase() {
   try {
     console.log('[Stats] 開始載入統計數據，matchId:', matchInfo.match_id);
+    console.log('[Stats] 初始化前的 stats 物件:', JSON.stringify(stats));
+    
     const res = await fetch(`/api/match-stats/${matchInfo.match_id}`);
     if (!res.ok) {
       console.log('[Stats] API 返回非 200 狀態:', res.status);
@@ -377,23 +379,42 @@ async function loadStatsFromDatabase() {
     
     const matchStats = await res.json();
     console.log('[Stats] 取得的統計數據:', matchStats);
+    console.log('[Stats] matchStats 是陣列嗎?', Array.isArray(matchStats));
+    console.log('[Stats] matchStats 長度:', matchStats.length);
     
     stats.ours = {};
     stats.opponent = {};
+    console.log('[Stats] 重置後的 stats:', JSON.stringify(stats));
     
-    matchStats.forEach(stat => {
+    if (!Array.isArray(matchStats)) {
+      console.error('[Stats] matchStats 不是陣列！', typeof matchStats);
+      return;
+    }
+    
+    matchStats.forEach((stat, index) => {
+      console.log(`[Stats] 處理第 ${index} 筆資料:`, stat);
       const teamKey = stat.team;
+      console.log(`[Stats] teamKey: ${teamKey}, player_name: ${stat.player_name}, grade: ${stat.grade}, count: ${stat.count}`);
+      
+      if (!stats[teamKey]) {
+        console.log(`[Stats] 警告: stats[${teamKey}] 不存在`);
+        return;
+      }
+      
       if (!stats[teamKey][stat.player_name]) {
         stats[teamKey][stat.player_name] = { A: 0, B: 0, C: 0, D: 0 };
+        console.log(`[Stats] 新增玩家: ${stat.player_name}`);
       }
       stats[teamKey][stat.player_name][stat.grade] = stat.count;
+      console.log(`[Stats] 更新後的玩家數據:`, stats[teamKey][stat.player_name]);
     });
     
     console.log('[Stats] 處理完後的 stats 物件:', stats);
+    console.log('[Stats] 即將調用 updateStatsDisplay()');
     updateStatsDisplay();
     console.log('[Stats] 統計表已更新顯示');
   } catch (err) {
-    console.error('載入統計失敗:', err);
+    console.error('[Stats] 載入統計失敗:', err);
   }
 }
 
