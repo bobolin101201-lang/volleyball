@@ -10,27 +10,45 @@ const wss = new WebSocket.Server({ server });
 let currentMatchId = null;
 const clients = new Set();
 
+// 生成短碼作為比賽 ID
+function generateMatchId() {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+  let result = '';
+  for (let i = 0; i < 6; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
 wss.on('connection', (ws) => {
   clients.add(ws);
   console.log(`Client connected. Total clients: ${clients.size}`);
 
-  // 發送當前比賽 ID 給新連線的客戶端
-  if (currentMatchId) {
-    ws.send(JSON.stringify({
-      type: 'match-joined',
-      matchId: currentMatchId
-    }));
+  // 如果還沒有比賽，建立新比賽
+  if (!currentMatchId) {
+    currentMatchId = generateMatchId();
+    console.log(`New match created: ${currentMatchId}`);
   }
+
+  // 發送當前比賽 ID 給新連線的客戶端
+  ws.send(JSON.stringify({
+    type: 'match-assigned',
+    matchId: currentMatchId
+  }));
+
+  // 通知其他客戶端有新人加入
+  clients.forEach(client => {
+    if (client !== ws && client.readyState === WebSocket.OPEN) {
+      client.send(JSON.stringify({
+        type: 'match-joined',
+        matchId: currentMatchId
+      }));
+    }
+  });
 
   ws.on('message', (message) => {
     try {
       const data = JSON.parse(message);
-      
-      // 更新當前比賽 ID
-      if (data.type === 'match-started') {
-        currentMatchId = data.matchId;
-        console.log(`Match started: ${currentMatchId}`);
-      }
       
       // 廣播訊息給所有客戶端
       if (data.type === 'score-update' || data.type === 'grade-update' || data.type === 'match-ended') {
@@ -40,6 +58,12 @@ wss.on('connection', (ws) => {
           }
         });
       }
+      
+      // 比賽結束時，清除當前比賽 ID 準備下一場
+      if (data.type === 'match-ended') {
+        console.log(`Match ${currentMatchId} ended`);
+        currentMatchId = null;
+      }
     } catch (err) {
       console.error('WebSocket message error:', err);
     }
@@ -48,6 +72,12 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     clients.delete(ws);
     console.log(`Client disconnected. Total clients: ${clients.size}`);
+    
+    // 如果所有客戶端都斷開，清除當前比賽 ID
+    if (clients.size === 0) {
+      currentMatchId = null;
+      console.log('All clients disconnected, match cleared');
+    }
   });
 
   ws.on('error', (err) => {

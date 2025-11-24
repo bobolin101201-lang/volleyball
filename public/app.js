@@ -11,25 +11,37 @@ function initializeWebSocket() {
   
   ws.onopen = () => {
     console.log('WebSocket connected');
-    // 通知伺服器當前比賽已開始
-    if (currentMatchActive && matchInfo.match_id) {
-      ws.send(JSON.stringify({
-        type: 'match-started',
-        matchId: matchInfo.match_id
-      }));
-    }
   };
   
   ws.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
       
-      // 接收其他客戶端的比賽 ID
+      // 接收伺服器指派的比賽 ID
+      if (data.type === 'match-assigned') {
+        console.log('Match assigned:', data.matchId);
+        matchInfo.match_id = data.matchId;
+        matchIdDisplay.textContent = matchInfo.match_id;
+        localStorage.setItem('currentMatchId', data.matchId);
+        localStorage.setItem('matchActive', 'true');
+        currentMatchActive = true;
+        
+        // 載入比賽資料
+        loadMatchFromDatabase().catch(err => {
+          console.log('載入比賽失敗，建立新比賽:', err);
+          createMatchInDatabase();
+        });
+      }
+      
+      // 接收其他客戶端的比賽 ID（新客戶端連上時）
       if (data.type === 'match-joined') {
         console.log('Joined match:', data.matchId);
-        if (matchInfo.match_id !== data.matchId && currentMatchActive) {
+        if (matchInfo.match_id !== data.matchId) {
           matchInfo.match_id = data.matchId;
           matchIdDisplay.textContent = matchInfo.match_id;
+          localStorage.setItem('currentMatchId', data.matchId);
+          localStorage.setItem('matchActive', 'true');
+          currentMatchActive = true;
           loadMatchFromDatabase().catch(err => {
             console.log('載入共享比賽失敗:', err);
           });
@@ -217,49 +229,23 @@ let maxPointsPerSet = 25; // 默認25分
 
 // ===== 初始化 =====
 function initializeMatch() {
-  // 檢查 URL 中是否有比賽 ID
-  const params = new URLSearchParams(window.location.search);
-  const urlMatchId = params.get('match');
+  // 不再從 URL 取比賽 ID，改由 WebSocket 提供
+  // 先檢查 localStorage 中是否有進行中的比賽
+  const currentMatchId = localStorage.getItem('currentMatchId');
+  const matchActive = localStorage.getItem('matchActive') === 'true';
   
-  if (urlMatchId) {
-    // 使用 URL 中的比賽 ID
-    matchInfo.match_id = urlMatchId;
+  if (currentMatchId && matchActive) {
+    // 恢復進行中的比賽
+    matchInfo.match_id = currentMatchId;
     matchIdDisplay.textContent = matchInfo.match_id;
-    // 儲存到 localStorage
-    localStorage.setItem('currentMatchId', urlMatchId);
-    localStorage.setItem('matchActive', 'true');
     currentMatchActive = true;
-    // 嘗試從資料庫載入，如果失敗就使用空白預設值
     loadMatchFromDatabase().catch(err => {
-      console.log('比賽不存在或載入失敗，使用預設值');
+      console.log('之前的比賽不存在，等待 WebSocket 指派');
     });
   } else {
-    // 檢查是否有進行中的比賽
-    const currentMatchId = localStorage.getItem('currentMatchId');
-    const matchActive = localStorage.getItem('matchActive') === 'true';
-    
-    if (currentMatchId && matchActive) {
-      // 恢復進行中的比賽
-      matchInfo.match_id = currentMatchId;
-      matchIdDisplay.textContent = matchInfo.match_id;
-      currentMatchActive = true;
-      loadMatchFromDatabase().catch(err => {
-        console.log('之前的比賽不存在，開始新比賽');
-        // 如果載入失敗，生成新比賽
-        matchInfo.match_id = generateMatchId();
-        matchIdDisplay.textContent = matchInfo.match_id;
-        localStorage.setItem('currentMatchId', matchInfo.match_id);
-        createMatchInDatabase();
-      });
-    } else {
-      // 生成新的比賽 ID
-      matchInfo.match_id = generateMatchId();
-      localStorage.setItem('currentMatchId', matchInfo.match_id);
-      localStorage.setItem('matchActive', 'true');
-      currentMatchActive = true;
-      createMatchInDatabase();
-      matchIdDisplay.textContent = matchInfo.match_id;
-    }
+    // 等待 WebSocket 連線後由伺服器指派比賽 ID
+    console.log('等待 WebSocket 連線以獲取比賽 ID...');
+    currentMatchActive = false;
   }
   
   loadAvailablePlayers();
