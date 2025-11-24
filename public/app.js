@@ -216,6 +216,21 @@ const resetMatchBtn = document.getElementById('reset-match-btn');
 const scoreNeutralBtn = document.getElementById('score-neutral-btn');
 const matchResult = document.getElementById('match-result');
 const setPointsToggle = document.getElementById('set-points-toggle');
+const clearDataBtn = document.getElementById('clear-data-btn');
+
+// 清除本地數據函數
+function clearLocalData() {
+  if (confirm('確定要清除所有本地數據並重新開始嗎？')) {
+    localStorage.clear();
+    sessionStorage.clear();
+    location.reload();
+  }
+}
+
+// 清除數據按鈕事件監聽
+if (clearDataBtn) {
+  clearDataBtn.addEventListener('click', clearLocalData);
+}
 
 // 比賽設定
 let maxPointsPerSet = 25; // 默認25分
