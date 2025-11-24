@@ -24,15 +24,22 @@ app.get('/api/health', (req, res) => {
 // 取得所有我方球員
 app.get('/api/our-players', async (req, res) => {
   try {
+    console.log('[DEBUG] Getting our-players...');
     const { data, error } = await supabase
       .from('our_players')
       .select('*')
       .order('name');
-    if (error) throw error;
-    res.json(data);
+    
+    if (error) {
+      console.error('[ERROR] Supabase query error:', error);
+      throw error;
+    }
+    
+    console.log('[DEBUG] Successfully retrieved players:', data?.length || 0);
+    res.json(data || []);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: err.message });
+    console.error('[ERROR] /api/our-players failed:', err.message || err);
+    res.status(500).json({ error: err.message || 'Internal server error' });
   }
 });
 

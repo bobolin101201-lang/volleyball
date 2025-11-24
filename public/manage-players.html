@@ -113,17 +113,26 @@
       async function loadPlayers() {
         try {
           const res = await fetch('/api/our-players');
+          if (!res.ok) {
+            throw new Error(`API error: ${res.status} ${res.statusText}`);
+          }
           const players = await res.json();
+          
+          if (!Array.isArray(players)) {
+            throw new Error('API returned non-array response: ' + JSON.stringify(players));
+          }
+          
           renderPlayers(players);
         } catch (err) {
           console.error('載入球員失敗:', err);
+          playersList.innerHTML = `<p style="color: red; text-align: center;">載入失敗: ${err.message}</p>`;
         }
       }
 
       // 渲染球員列表
       function renderPlayers(players) {
         playersList.innerHTML = '';
-        if (players.length === 0) {
+        if (!players || players.length === 0) {
           playersList.innerHTML =
             '<p style="text-align: center; color: #999;">還沒有球員</p>';
           return;
