@@ -1,6 +1,75 @@
 const gradeOptions = ['A', 'B', 'C', 'D', 'F'];
 const displayedGrades = ['A', 'B', 'C', 'D'];
 
+// ===== WebSocket 連線管理 =====
+let ws = null;
+function initializeWebSocket() {
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const wsUrl = `${protocol}//${window.location.host}`;
+  
+  ws = new WebSocket(wsUrl);
+  
+  ws.onopen = () => {
+    console.log('WebSocket connected');
+    // 通知伺服器當前比賽已開始
+    if (currentMatchActive && matchInfo.match_id) {
+      ws.send(JSON.stringify({
+        type: 'match-started',
+        matchId: matchInfo.match_id
+      }));
+    }
+  };
+  
+  ws.onmessage = (event) => {
+    try {
+      const data = JSON.parse(event.data);
+      
+      // 接收其他客戶端的比賽 ID
+      if (data.type === 'match-joined') {
+        console.log('Joined match:', data.matchId);
+        if (matchInfo.match_id !== data.matchId && currentMatchActive) {
+          matchInfo.match_id = data.matchId;
+          matchIdDisplay.textContent = matchInfo.match_id;
+          loadMatchFromDatabase().catch(err => {
+            console.log('載入共享比賽失敗:', err);
+          });
+        }
+      }
+      
+      // 接收即時的得分更新
+      if (data.type === 'score-update') {
+        console.log('Received score update:', data);
+        score.ours = data.ourScore;
+        score.opponent = data.opponentScore;
+        updateScoreDisplay();
+      }
+      
+      // 接收即時的評分更新
+      if (data.type === 'grade-update') {
+        console.log('Received grade update:', data);
+        loadStatsFromDatabase();
+      }
+      
+      // 接收比賽結束通知
+      if (data.type === 'match-ended') {
+        console.log('Match ended');
+        loadMatchFromDatabase();
+      }
+    } catch (err) {
+      console.error('WebSocket message parse error:', err);
+    }
+  };
+  
+  ws.onerror = (error) => {
+    console.error('WebSocket error:', error);
+  };
+  
+  ws.onclose = () => {
+    console.log('WebSocket disconnected, retrying in 5s...');
+    setTimeout(initializeWebSocket, 5000);
+  };
+}
+
 // 得分方式選項
 const scoreTypeOptions = [
   { id: 'attack', label: '攻擊得分' },
@@ -1191,6 +1260,15 @@ scorePlusBtn.addEventListener('click', (event) => {
       updateScoreBtnsStyle();
       saveMatchToDatabase();
       checkMatchEnd();
+      
+      // 廣播分數更新
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'score-update',
+          ourScore: score.ours,
+          opponentScore: score.opponent
+        }));
+      }
     };
     
     // 檢查是否需要選擇球員
@@ -1260,6 +1338,15 @@ scoreMinusBtn.addEventListener('click', (event) => {
       updateScoreBtnsStyle();
       saveMatchToDatabase();
       checkMatchEnd();
+      
+      // 廣播分數更新
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'score-update',
+          ourScore: score.ours,
+          opponentScore: score.opponent
+        }));
+      }
     };
     
     // 檢查是否需要選擇球員
@@ -1338,4 +1425,5 @@ document.addEventListener('DOMContentLoaded', () => {
     ourPlayerSelect,
   });
   initializeMatch();
+  initializeWebSocket();
 });
