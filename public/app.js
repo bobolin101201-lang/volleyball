@@ -3,13 +3,15 @@ const displayedGrades = ['A', 'B', 'C', 'D'];
 
 // ===== 比賽 ID 同步管理 (Polling) =====
 let pollingInterval = null;
+let firstPollDone = false;
 
 function startPolling() {
   // 立即檢查一次
-  checkActiveMatch();
+  checkAndSyncActiveMatch();
+  firstPollDone = true;
   
-  // 每 3 秒檢查一次
-  pollingInterval = setInterval(checkActiveMatch, 3000);
+  // 每 2 秒檢查一次 + 報告活動
+  pollingInterval = setInterval(checkAndSyncActiveMatch, 2000);
 }
 
 function stopPolling() {
@@ -19,46 +21,46 @@ function stopPolling() {
   }
 }
 
-async function checkActiveMatch() {
+async function checkAndSyncActiveMatch() {
   try {
-    const res = await fetch('/api/active-match');
+    // 1. 同時檢查伺服器比賽 ID 和報告活動
+    const responses = await Promise.all([
+      fetch('/api/active-match'),
+      fetch('/api/report-activity', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+      })
+    ]);
+    
+    const res = responses[0];
     if (!res.ok) return;
     
     const data = await res.json();
     const serverMatchId = data.match_id;
+    
+    console.log(`[Polling] 伺服器 matchId: ${serverMatchId}, 本地 matchId: ${matchInfo.match_id}`);
     
     // 如果本地還沒有 matchId，設置為伺服器的
     if (!matchInfo.match_id) {
       matchInfo.match_id = serverMatchId;
       matchIdDisplay.textContent = matchInfo.match_id;
       localStorage.setItem('currentMatchId', serverMatchId);
-      console.log(`[Polling] 分配新比賽: ${serverMatchId}`);
+      console.log(`[Polling] ✓ 分配新比賽: ${serverMatchId}`);
       await createMatchInDatabase();
       await loadMatchFromDatabase();
       return;
     }
     
-    // 如果伺服器的比賽 ID 不同，更新本地
+    // 如果伺服器的比賽 ID 不同，表示另一用戶開了新比賽，更新本地
     if (matchInfo.match_id !== serverMatchId) {
-      console.log(`[Polling] Match changed: ${matchInfo.match_id} -> ${serverMatchId}`);
+      console.log(`[Polling] ⚠️  比賽已改變: ${matchInfo.match_id} -> ${serverMatchId}`);
       matchInfo.match_id = serverMatchId;
       matchIdDisplay.textContent = matchInfo.match_id;
       localStorage.setItem('currentMatchId', serverMatchId);
       await loadMatchFromDatabase();
     }
   } catch (err) {
-    console.error('[Polling] Check active match failed:', err);
-  }
-}
-
-async function reportActivity() {
-  try {
-    await fetch('/api/report-activity', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' }
-    });
-  } catch (err) {
-    // 靜默失敗，不影響用戶體驗
+    console.error('[Polling] 檢查/同步失敗:', err);
   }
 }
 
@@ -208,20 +210,36 @@ const setPointsToggle = document.getElementById('set-points-toggle');
 let maxPointsPerSet = 25; // 默認25分
 
 // ===== 初始化 =====
-function initializeMatch() {
-  // 從伺服器取得目前的比賽 ID (polling 機制)
-  const currentMatchId = localStorage.getItem('currentMatchId');
+async function initializeMatch() {
+  // 嘗試從 localStorage 恢復比賽 ID
+  const localMatchId = localStorage.getItem('currentMatchId');
   
-  if (currentMatchId) {
-    matchInfo.match_id = currentMatchId;
+  if (localMatchId) {
+    console.log(`[Init] 從 localStorage 恢復比賽 ID: ${localMatchId}`);
+    matchInfo.match_id = localMatchId;
     matchIdDisplay.textContent = matchInfo.match_id;
     currentMatchActive = true;
     loadMatchFromDatabase().catch(err => {
-      console.log('載入比賽失敗:', err);
+      console.log('[Init] 載入本地比賽失敗:', err);
     });
   } else {
-    console.log('等待伺服器分配比賽 ID...');
-    // 由 checkActiveMatch() 透過 polling 取得
+    console.log('[Init] 沒有本地比賽 ID，從伺服器同步...');
+    // 新用戶或 localStorage 被清除，直接從伺服器取得
+    try {
+      const res = await fetch('/api/active-match');
+      if (res.ok) {
+        const data = await res.json();
+        matchInfo.match_id = data.match_id;
+        matchIdDisplay.textContent = matchInfo.match_id;
+        localStorage.setItem('currentMatchId', data.match_id);
+        console.log(`[Init] ✓ 同步伺服器比賽 ID: ${data.match_id}`);
+        // 不呼叫 createMatchInDatabase()，因為比賽可能已存在
+        // 直接載入
+        await loadMatchFromDatabase();
+      }
+    } catch (err) {
+      console.error('[Init] 初始化比賽 ID 失敗:', err);
+    }
   }
   
   loadAvailablePlayers();
@@ -1225,9 +1243,6 @@ scorePlusBtn.addEventListener('click', (event) => {
       updateScoreBtnsStyle();
       saveMatchToDatabase();
       checkMatchEnd();
-      
-      // 回報活動時間給伺服器
-      reportActivity();
     };
     
     // 檢查是否需要選擇球員
@@ -1297,9 +1312,6 @@ scoreMinusBtn.addEventListener('click', (event) => {
       updateScoreBtnsStyle();
       saveMatchToDatabase();
       checkMatchEnd();
-      
-      // 回報活動時間給伺服器
-      reportActivity();
     };
     
     // 檢查是否需要選擇球員

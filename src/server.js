@@ -20,9 +20,9 @@ function generateMatchId() {
 function getActiveMatch() {
   const now = Date.now();
   
-  // 檢查比賽是否過期
+  // 檢查比賽是否過期（超過5分鐘無活動）
   if (activeMatchId && lastActivityTime && (now - lastActivityTime) > MATCH_TIMEOUT) {
-    console.log(`[Polling] Match ${activeMatchId} expired due to inactivity`);
+    console.log(`[Polling] 比賽 ${activeMatchId} 因無活動已過期（閒置超過 5 分鐘）`);
     activeMatchId = null;
     lastActivityTime = null;
   }
@@ -31,7 +31,9 @@ function getActiveMatch() {
   if (!activeMatchId) {
     activeMatchId = generateMatchId();
     lastActivityTime = now;
-    console.log(`[Polling] New match created: ${activeMatchId}`);
+    console.log(`[Polling] ✓ 建立新比賽: ${activeMatchId}`);
+  } else {
+    console.log(`[Polling] 復用現有比賽: ${activeMatchId}, 距上次活動 ${Math.round((now - lastActivityTime) / 1000)} 秒`);
   }
   
   return activeMatchId;
@@ -40,11 +42,14 @@ function getActiveMatch() {
 // 更新最後活動時間
 function updateActivityTime() {
   lastActivityTime = Date.now();
+  console.log(`[Polling] 活動時間已更新，比賽 ${activeMatchId} 保活中`);
 }
 
 // API 端點：取得活躍比賽 ID
 app.get('/api/active-match', (req, res) => {
   const matchId = getActiveMatch();
+  // 每次有客戶端檢查時，更新活動時間（代表有人在用這個比賽）
+  updateActivityTime();
   res.json({ match_id: matchId });
 });
 
