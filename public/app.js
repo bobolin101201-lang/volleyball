@@ -1,85 +1,65 @@
 const gradeOptions = ['A', 'B', 'C', 'D', 'F'];
 const displayedGrades = ['A', 'B', 'C', 'D'];
 
-// ===== WebSocket 連線管理 =====
-let ws = null;
-function initializeWebSocket() {
-  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}`;
+// ===== 比賽 ID 同步管理 (Polling) =====
+let pollingInterval = null;
+
+function startPolling() {
+  // 立即檢查一次
+  checkActiveMatch();
   
-  ws = new WebSocket(wsUrl);
-  
-  ws.onopen = () => {
-    console.log('WebSocket connected');
-  };
-  
-  ws.onmessage = (event) => {
-    try {
-      const data = JSON.parse(event.data);
-      
-      // 接收伺服器指派的比賽 ID
-      if (data.type === 'match-assigned') {
-        console.log('Match assigned:', data.matchId);
-        matchInfo.match_id = data.matchId;
-        matchIdDisplay.textContent = matchInfo.match_id;
-        localStorage.setItem('currentMatchId', data.matchId);
-        localStorage.setItem('matchActive', 'true');
-        currentMatchActive = true;
-        
-        // 載入比賽資料
-        loadMatchFromDatabase().catch(err => {
-          console.log('載入比賽失敗，建立新比賽:', err);
-          createMatchInDatabase();
-        });
-      }
-      
-      // 接收其他客戶端的比賽 ID（新客戶端連上時）
-      if (data.type === 'match-joined') {
-        console.log('Joined match:', data.matchId);
-        if (matchInfo.match_id !== data.matchId) {
-          matchInfo.match_id = data.matchId;
-          matchIdDisplay.textContent = matchInfo.match_id;
-          localStorage.setItem('currentMatchId', data.matchId);
-          localStorage.setItem('matchActive', 'true');
-          currentMatchActive = true;
-          loadMatchFromDatabase().catch(err => {
-            console.log('載入共享比賽失敗:', err);
-          });
-        }
-      }
-      
-      // 接收即時的得分更新
-      if (data.type === 'score-update') {
-        console.log('Received score update:', data);
-        score.ours = data.ourScore;
-        score.opponent = data.opponentScore;
-        updateScoreDisplay();
-      }
-      
-      // 接收即時的評分更新
-      if (data.type === 'grade-update') {
-        console.log('Received grade update:', data);
-        loadStatsFromDatabase();
-      }
-      
-      // 接收比賽結束通知
-      if (data.type === 'match-ended') {
-        console.log('Match ended');
-        loadMatchFromDatabase();
-      }
-    } catch (err) {
-      console.error('WebSocket message parse error:', err);
+  // 每 3 秒檢查一次
+  pollingInterval = setInterval(checkActiveMatch, 3000);
+}
+
+function stopPolling() {
+  if (pollingInterval) {
+    clearInterval(pollingInterval);
+    pollingInterval = null;
+  }
+}
+
+async function checkActiveMatch() {
+  try {
+    const res = await fetch('/api/active-match');
+    if (!res.ok) return;
+    
+    const data = await res.json();
+    const serverMatchId = data.match_id;
+    
+    // 如果本地還沒有 matchId，設置為伺服器的
+    if (!matchInfo.match_id) {
+      matchInfo.match_id = serverMatchId;
+      matchIdDisplay.textContent = matchInfo.match_id;
+      localStorage.setItem('currentMatchId', serverMatchId);
+      console.log(`[Polling] 分配新比賽: ${serverMatchId}`);
+      await createMatchInDatabase();
+      await loadMatchFromDatabase();
+      return;
     }
-  };
-  
-  ws.onerror = (error) => {
-    console.error('WebSocket error:', error);
-  };
-  
-  ws.onclose = () => {
-    console.log('WebSocket disconnected, retrying in 5s...');
-    setTimeout(initializeWebSocket, 5000);
-  };
+    
+    // 如果伺服器的比賽 ID 不同，更新本地
+    if (matchInfo.match_id !== serverMatchId) {
+      console.log(`[Polling] Match changed: ${matchInfo.match_id} -> ${serverMatchId}`);
+      matchInfo.match_id = serverMatchId;
+      matchIdDisplay.textContent = matchInfo.match_id;
+      localStorage.setItem('currentMatchId', serverMatchId);
+      await loadMatchFromDatabase();
+    }
+  } catch (err) {
+    console.error('[Polling] Check active match failed:', err);
+  }
+}
+
+async function reportActivity() {
+  try {
+    await fetch('/api/report-activity', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+  } catch (err) {
+    // 靜默失敗，不影響用戶體驗
+  }
 }
 
 // 得分方式選項
@@ -229,23 +209,19 @@ let maxPointsPerSet = 25; // 默認25分
 
 // ===== 初始化 =====
 function initializeMatch() {
-  // 不再從 URL 取比賽 ID，改由 WebSocket 提供
-  // 先檢查 localStorage 中是否有進行中的比賽
+  // 從伺服器取得目前的比賽 ID (polling 機制)
   const currentMatchId = localStorage.getItem('currentMatchId');
-  const matchActive = localStorage.getItem('matchActive') === 'true';
   
-  if (currentMatchId && matchActive) {
-    // 恢復進行中的比賽
+  if (currentMatchId) {
     matchInfo.match_id = currentMatchId;
     matchIdDisplay.textContent = matchInfo.match_id;
     currentMatchActive = true;
     loadMatchFromDatabase().catch(err => {
-      console.log('之前的比賽不存在，等待 WebSocket 指派');
+      console.log('載入比賽失敗:', err);
     });
   } else {
-    // 等待 WebSocket 連線後由伺服器指派比賽 ID
-    console.log('等待 WebSocket 連線以獲取比賽 ID...');
-    currentMatchActive = false;
+    console.log('等待伺服器分配比賽 ID...');
+    // 由 checkActiveMatch() 透過 polling 取得
   }
   
   loadAvailablePlayers();
@@ -255,6 +231,9 @@ function initializeMatch() {
   // 設置默認得分上限為25分
   maxPointsPerSet = 25;
   setPointsToggle.checked = true;
+  
+  // 啟動 polling 機制
+  startPolling();
 }
 
 // 生成短碼作為比賽 ID
@@ -1247,14 +1226,8 @@ scorePlusBtn.addEventListener('click', (event) => {
       saveMatchToDatabase();
       checkMatchEnd();
       
-      // 廣播分數更新
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'score-update',
-          ourScore: score.ours,
-          opponentScore: score.opponent
-        }));
-      }
+      // 回報活動時間給伺服器
+      reportActivity();
     };
     
     // 檢查是否需要選擇球員
@@ -1325,14 +1298,8 @@ scoreMinusBtn.addEventListener('click', (event) => {
       saveMatchToDatabase();
       checkMatchEnd();
       
-      // 廣播分數更新
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-          type: 'score-update',
-          ourScore: score.ours,
-          opponentScore: score.opponent
-        }));
-      }
+      // 回報活動時間給伺服器
+      reportActivity();
     };
     
     // 檢查是否需要選擇球員
@@ -1395,9 +1362,11 @@ document.addEventListener('click', () => {
 
 // 新增比賽按鈕事件
 newMatchBtn.addEventListener('click', () => {
-  const newMatchId = generateMatchId();
-  localStorage.setItem('matchActive', 'true');
-  window.location.href = `/?match=${newMatchId}`;
+  // 清除 localStorage 並重新導向到首頁
+  // 伺服器會自動建立新的比賽 ID
+  localStorage.removeItem('currentMatchId');
+  localStorage.removeItem('matchActive');
+  window.location.href = '/';
 });
 
 // 初始化
@@ -1411,5 +1380,4 @@ document.addEventListener('DOMContentLoaded', () => {
     ourPlayerSelect,
   });
   initializeMatch();
-  initializeWebSocket();
 });
