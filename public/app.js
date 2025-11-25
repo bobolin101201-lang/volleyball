@@ -300,6 +300,8 @@ async function loadPlayerReasonStatsFromDatabase() {
     if (!res.ok) return;
     
     const playerStats = await res.json();
+    console.log('[LoadPlayerReasonStats] 從資料庫取得資料:', playerStats);
+    console.log('[LoadPlayerReasonStats] 上場球員:', lineupState.ours);
     
     // 初始化
     playerReasonStats.ours = {};
@@ -308,26 +310,50 @@ async function loadPlayerReasonStatsFromDatabase() {
     playerStats.forEach(stat => {
       const teamKey = stat.team || 'ours'; // 預設為我方
       if (!playerReasonStats[teamKey]) playerReasonStats[teamKey] = {};
-      if (!playerReasonStats[teamKey][stat.player_id]) {
-        playerReasonStats[teamKey][stat.player_id] = {
+      
+      // 嘗試用多種方式匹配球員 ID
+      let matchedPlayerId = null;
+      
+      // 方法 1: 直接用 player_id
+      if (stat.player_id) {
+        matchedPlayerId = stat.player_id;
+      }
+      
+      // 方法 2: 如果沒有 player_id，嘗試用球員名稱匹配
+      if (!matchedPlayerId && stat.player_name) {
+        const matchedPlayer = lineupState[teamKey].find(p => p.name === stat.player_name);
+        if (matchedPlayer) {
+          matchedPlayerId = matchedPlayer.id;
+        }
+      }
+      
+      // 如果還是找不到，就跳過
+      if (!matchedPlayerId) {
+        console.warn(`[LoadPlayerReasonStats] 找不到球員: ${stat.player_name || stat.player_id}`);
+        return;
+      }
+      
+      if (!playerReasonStats[teamKey][matchedPlayerId]) {
+        playerReasonStats[teamKey][matchedPlayerId] = {
           score: {},
           loss: {},
         };
         scoreTypeOptions.forEach(option => {
-          playerReasonStats[teamKey][stat.player_id].score[option.id] = 0;
+          playerReasonStats[teamKey][matchedPlayerId].score[option.id] = 0;
         });
         lossTypeOptions.forEach(option => {
-          playerReasonStats[teamKey][stat.player_id].loss[option.id] = 0;
+          playerReasonStats[teamKey][matchedPlayerId].loss[option.id] = 0;
         });
       }
       
       if (stat.reason_type === 'score') {
-        playerReasonStats[teamKey][stat.player_id].score[stat.reason_id] = stat.count;
+        playerReasonStats[teamKey][matchedPlayerId].score[stat.reason_id] = stat.count;
       } else if (stat.reason_type === 'loss') {
-        playerReasonStats[teamKey][stat.player_id].loss[stat.reason_id] = stat.count;
+        playerReasonStats[teamKey][matchedPlayerId].loss[stat.reason_id] = stat.count;
       }
     });
     
+    console.log('[LoadPlayerReasonStats] 載入後的 playerReasonStats:', playerReasonStats);
     updatePlayerReasonStatsDisplay();
   } catch (err) {
     console.error('載入球員得失分原因統計失敗:', err);
@@ -815,11 +841,20 @@ function updatePlayerReasonStatsDisplay() {
     initializePlayerReasonStats('ours', playerId);
     const playerStats = playerReasonStats.ours[playerId];
     
+    // 確保 playerStats 存在
+    if (!playerStats) {
+      console.warn(`[UpdateDisplay] 球員 ${playerId} (${player.name}) 的統計不存在`);
+      return;
+    }
+    
     // 檢查是否有任何統計
     const hasScoreStats = Object.values(playerStats.score).some(v => v > 0);
     const hasLossStats = Object.values(playerStats.loss).some(v => v > 0);
     
-    if (!hasScoreStats && !hasLossStats) return; // 跳過沒有統計的球員
+    if (!hasScoreStats && !hasLossStats) {
+      console.log(`[UpdateDisplay] 球員 ${player.name} 沒有統計`);
+      return; // 跳過沒有統計的球員
+    }
     
     hasData = true;
     const row = document.createElement('tr');
