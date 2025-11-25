@@ -4,7 +4,7 @@ const displayedGrades = ['A', 'B', 'C', 'D'];
 // ===== 比賽 ID 同步管理 (Polling) =====
 let pollingInterval = null;
 let firstPollDone = false;
-let skipNextSync = false; // 防止結束比賽後立即同步舊資料
+let shouldStartPolling = false; // 控制是否應該啟動 polling
 
 function startPolling() {
   // 立即檢查一次
@@ -24,13 +24,6 @@ function stopPolling() {
 
 async function checkAndSyncActiveMatch() {
   try {
-    // 防止結束比賽後立即同步舊資料
-    if (skipNextSync) {
-      console.log('[Polling] 跳過同步（剛結束比賽）');
-      skipNextSync = false;
-      return;
-    }
-    
     // 1. 同時檢查伺服器比賽 ID 和報告活動
     const responses = await Promise.all([
       fetch('/api/active-match'),
@@ -235,24 +228,14 @@ async function initializeMatch() {
     await loadMatchFromDatabase().catch(err => {
       console.log('[Init] 載入本地比賽失敗:', err);
     });
+    // ✅ 有本地比賽 ID，啟動 polling
+    shouldStartPolling = true;
   } else {
-    console.log('[Init] 沒有本地比賽 ID，從伺服器同步...');
-    // 新用戶或 localStorage 被清除，直接從伺服器取得
-    try {
-      const res = await fetch('/api/active-match');
-      if (res.ok) {
-        const data = await res.json();
-        matchInfo.match_id = data.match_id;
-        matchIdDisplay.textContent = matchInfo.match_id;
-        localStorage.setItem('currentMatchId', data.match_id);
-        console.log(`[Init] ✓ 同步伺服器比賽 ID: ${data.match_id}`);
-        // 不呼叫 createMatchInDatabase()，因為比賽可能已存在
-        // 直接載入
-        await loadMatchFromDatabase();
-      }
-    } catch (err) {
-      console.error('[Init] 初始化比賽 ID 失敗:', err);
-    }
+    console.log('[Init] 沒有本地比賽 ID，等待用戶操作...');
+    // 新用戶或結束比賽後，不自動啟動 polling
+    // 等待用戶主動操作
+    matchIdDisplay.textContent = '等待開始...';
+    shouldStartPolling = false;
   }
   
   loadAvailablePlayers();
@@ -263,8 +246,12 @@ async function initializeMatch() {
   maxPointsPerSet = 25;
   setPointsToggle.checked = true;
   
-  // ✅ 重要：在所有初始化完成後才啟動 polling
-  startPolling();
+  // ✅ 只在有 match_id 時才啟動 polling
+  if (shouldStartPolling) {
+    startPolling();
+  } else {
+    console.log('[Init] 等待用戶開始比賽...');
+  }
 }
 
 // 生成短碼作為比賽 ID
@@ -1024,6 +1011,10 @@ function resetMatch() {
   // 先儲存目前局的分數到資料庫
   saveMatchToDatabase();
   
+  // 停止 polling（防止被拉回舊資料）
+  stopPolling();
+  console.log('[ResetMatch] ✓ 已停止 polling');
+  
   // 清空比賽信息
   matchInfo.school = '';
   matchInfo.date = '';
@@ -1062,18 +1053,14 @@ function resetMatch() {
   // 儲存空白比賽到資料庫
   saveMatchToDatabase();
   
-  // 防止下一次 polling 立即拉回舊資料
-  skipNextSync = true;
+  // 清空 match_id（結束比賽，等待用戶開始新比賽）
+  matchInfo.match_id = '';
+  matchIdDisplay.textContent = '等待開始...';
+  localStorage.removeItem('currentMatchId');
+  localStorage.setItem('matchActive', 'false');
   
-  // 產生新的比賽ID準備下一場比賽
-  matchInfo.match_id = generateMatchId();
-  matchIdDisplay.textContent = matchInfo.match_id;
-  localStorage.setItem('currentMatchId', matchInfo.match_id);
-  localStorage.setItem('matchActive', 'true');
-  currentMatchActive = true;
-  createMatchInDatabase();
-  // 更新 URL
-  window.history.replaceState({}, '', `?match=${matchInfo.match_id}`);
+  // 更新 URL 移除比賽 ID
+  window.history.replaceState({}, '', '/');
 }
 
 function nextSet() {
@@ -1388,8 +1375,48 @@ resetMatchBtn.addEventListener('click', resetMatch);
 
 schoolInput.addEventListener('input', (e) => {
   matchInfo.school = e.target.value;
+  
+  // 如果用戶輸入了學校名稱且還沒有 match_id，自動開始比賽
+  if (e.target.value.trim() && !matchInfo.match_id) {
+    console.log('[Auto-Start] 用戶輸入學校名稱，自動開始比賽');
+    startNewMatch();
+  }
+  
   saveMatchToDatabase();
 });
+
+// 開始新比賽的函數
+async function startNewMatch() {
+  if (matchInfo.match_id) {
+    console.log('[StartMatch] 已有比賽 ID，無需開始新比賽');
+    return;
+  }
+  
+  try {
+    // 生成新的 match_id
+    matchInfo.match_id = generateMatchId();
+    matchIdDisplay.textContent = matchInfo.match_id;
+    localStorage.setItem('currentMatchId', matchInfo.match_id);
+    localStorage.setItem('matchActive', 'true');
+    currentMatchActive = true;
+    
+    console.log(`[StartMatch] ✓ 開始新比賽: ${matchInfo.match_id}`);
+    
+    // 建立比賽記錄到資料庫
+    await createMatchInDatabase();
+    
+    // 啟動 polling
+    if (!pollingInterval) {
+      startPolling();
+      console.log('[StartMatch] ✓ 已啟動 polling');
+    }
+    
+    // 更新 URL
+    window.history.replaceState({}, '', `?match=${matchInfo.match_id}`);
+  } catch (err) {
+    console.error('[StartMatch] 開始比賽失敗:', err);
+  }
+}
 
 matchDateInput.addEventListener('change', (e) => {
   matchInfo.date = e.target.value;
