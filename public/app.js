@@ -1,74 +1,6 @@
 const gradeOptions = ['A', 'B', 'C', 'D', 'F'];
 const displayedGrades = ['A', 'B', 'C', 'D'];
 
-// ===== 比賽 ID 同步管理 (Polling) =====
-let pollingInterval = null;
-let firstPollDone = false;
-let shouldStartPolling = false; // 控制是否應該啟動 polling
-
-function startPolling() {
-  // 立即檢查一次
-  checkAndSyncActiveMatch();
-  firstPollDone = true;
-  
-  // 每 2 秒檢查一次 + 報告活動
-  pollingInterval = setInterval(checkAndSyncActiveMatch, 2000);
-}
-
-function stopPolling() {
-  if (pollingInterval) {
-    clearInterval(pollingInterval);
-    pollingInterval = null;
-  }
-}
-
-async function checkAndSyncActiveMatch() {
-  try {
-    // 1. 同時檢查伺服器比賽 ID 和報告活動
-    const responses = await Promise.all([
-      fetch('/api/active-match'),
-      fetch('/api/report-activity', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      })
-    ]);
-    
-    const res = responses[0];
-    if (!res.ok) return;
-    
-    const data = await res.json();
-    const serverMatchId = data.match_id;
-    
-    console.log(`[Polling] 伺服器 matchId: ${serverMatchId}, 本地 matchId: ${matchInfo.match_id}`);
-    
-    // 如果本地還沒有 matchId，設置為伺服器的
-    if (!matchInfo.match_id) {
-      matchInfo.match_id = serverMatchId;
-      matchIdDisplay.textContent = matchInfo.match_id;
-      localStorage.setItem('currentMatchId', serverMatchId);
-      console.log(`[Polling] ✓ 分配新比賽: ${serverMatchId}`);
-      // 不呼叫 createMatchInDatabase，比賽可能已經存在
-      // 直接載入
-      await loadMatchFromDatabase();
-      return;
-    }
-    
-    // 如果伺服器的比賽 ID 不同，表示另一用戶開了新比賽，更新本地
-    if (matchInfo.match_id !== serverMatchId) {
-      console.log(`[Polling] ⚠️  比賽已改變: ${matchInfo.match_id} -> ${serverMatchId}`);
-      matchInfo.match_id = serverMatchId;
-      matchIdDisplay.textContent = matchInfo.match_id;
-      localStorage.setItem('currentMatchId', serverMatchId);
-      // ✅ 只在其他欄位改變時才重新載入（不是每次都載入）
-      // 這樣可以避免用戶正在編輯時被打斷
-      await loadMatchFromDatabase();
-    }
-    // ✅ 刪除：如果 ID 相同就不重新載入，避免不必要的重新整理
-  } catch (err) {
-    console.error('[Polling] 檢查/同步失敗:', err);
-  }
-}
-
 // 得分方式選項
 const scoreTypeOptions = [
   { id: 'attack', label: '攻擊得分' },
@@ -228,14 +160,9 @@ async function initializeMatch() {
     await loadMatchFromDatabase().catch(err => {
       console.log('[Init] 載入本地比賽失敗:', err);
     });
-    // ✅ 有本地比賽 ID，啟動 polling
-    shouldStartPolling = true;
   } else {
     console.log('[Init] 沒有本地比賽 ID，等待用戶操作...');
-    // 新用戶或結束比賽後，不自動啟動 polling
-    // 等待用戶主動操作
     matchIdDisplay.textContent = '等待開始...';
-    shouldStartPolling = false;
   }
   
   loadAvailablePlayers();
@@ -245,13 +172,6 @@ async function initializeMatch() {
   // 設置默認得分上限為25分
   maxPointsPerSet = 25;
   setPointsToggle.checked = true;
-  
-  // ✅ 只在有 match_id 時才啟動 polling
-  if (shouldStartPolling) {
-    startPolling();
-  } else {
-    console.log('[Init] 等待用戶開始比賽...');
-  }
 }
 
 // 生成短碼作為比賽 ID
@@ -1011,10 +931,6 @@ function resetMatch() {
   // 先儲存目前局的分數到資料庫
   saveMatchToDatabase();
   
-  // 停止 polling（防止被拉回舊資料）
-  stopPolling();
-  console.log('[ResetMatch] ✓ 已停止 polling');
-  
   // 清空比賽信息
   matchInfo.school = '';
   matchInfo.date = '';
@@ -1404,12 +1320,6 @@ async function startNewMatch() {
     
     // 建立比賽記錄到資料庫
     await createMatchInDatabase();
-    
-    // 啟動 polling
-    if (!pollingInterval) {
-      startPolling();
-      console.log('[StartMatch] ✓ 已啟動 polling');
-    }
     
     // 更新 URL
     window.history.replaceState({}, '', `?match=${matchInfo.match_id}`);
