@@ -364,6 +364,82 @@ app.post('/api/player-reason-stats', async (req, res) => {
   }
 });
 
+// ===== 全局得分/失分原因統計 API =====
+// 保存全局得分/失分原因統計
+app.post('/api/match-reason-stats', async (req, res) => {
+  try {
+    const { match_id, reason_id, reason_type } = req.body;
+    
+    // 先查找是否已存在
+    const { data: existing, error: queryError } = await supabase
+      .from('match_reason_stats')
+      .select('*')
+      .eq('match_id', match_id)
+      .eq('reason_id', reason_id)
+      .eq('reason_type', reason_type)
+      .single();
+    
+    if (existing) {
+      // 更新計數
+      const { data, error } = await supabase
+        .from('match_reason_stats')
+        .update({ count: existing.count + 1, updated_at: new Date() })
+        .eq('id', existing.id)
+        .select();
+      if (error) throw error;
+      return res.json(data[0]);
+    }
+    
+    // 新增統計
+    const { data, error } = await supabase
+      .from('match_reason_stats')
+      .insert([{ 
+        match_id, 
+        reason_id, 
+        reason_type, 
+        count: 1 
+      }])
+      .select();
+    if (error) throw error;
+    res.json(data[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 取得全局得分/失分原因統計
+app.get('/api/reason-stats/:match_id', async (req, res) => {
+  try {
+    const { match_id } = req.params;
+    const { data, error } = await supabase
+      .from('match_reason_stats')
+      .select('*')
+      .eq('match_id', match_id);
+    if (error) throw error;
+    
+    // 整理統計數據
+    const scoreStats = {};
+    const lossStats = {};
+    
+    data.forEach(stat => {
+      if (stat.reason_type === 'score') {
+        scoreStats[stat.reason_id] = stat.count;
+      } else if (stat.reason_type === 'loss') {
+        lossStats[stat.reason_id] = stat.count;
+      }
+    });
+    
+    res.json({
+      score: scoreStats,
+      loss: lossStats
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 刪除比賽及其相關數據
 app.delete('/api/matches/:match_id', async (req, res) => {
   try {
@@ -395,6 +471,19 @@ app.delete('/api/matches/:match_id', async (req, res) => {
       throw playerReasonStatsError;
     }
     console.log('球員得失分原因統計刪除成功');
+    
+    // 刪除該比賽的全局得分/失分原因統計
+    console.log('正在刪除全局得分/失分原因統計...');
+    const { error: matchReasonStatsError } = await supabase
+      .from('match_reason_stats')
+      .delete()
+      .eq('match_id', match_id);
+    
+    if (matchReasonStatsError) {
+      console.error('刪除全局得分/失分原因統計失敗:', matchReasonStatsError);
+      throw matchReasonStatsError;
+    }
+    console.log('全局得分/失分原因統計刪除成功');
     
     // 刪除該比賽的上場球員
     console.log('正在刪除上場球員...');

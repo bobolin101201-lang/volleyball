@@ -31,7 +31,7 @@ const lossTypeOptions = [
 // 需要選擇球員的原因 ID（我方球員的得分/失分）
 const playerReasonsIds = [
   'attack', 'serve', 'tip', 'block', // 得分原因
-  'attack_no_in', 'attack_out', 'serve_error', 'defense_error' // 失分原因
+  'attack_no_in', 'attack_out', 'serve_error', 'defense_error', 'foul' // 失分原因
 ];
 
 // 檢查是否需要選擇球員
@@ -236,6 +236,8 @@ async function loadMatchFromDatabase() {
     await loadLineupFromDatabase();
     // 載入統計數據
     await loadStatsFromDatabase();
+    // 載入全局得分/失分原因統計
+    await loadReasonStatsFromDatabase();
     // 載入球員得失分原因統計
     await loadPlayerReasonStatsFromDatabase();
   } catch (err) {
@@ -357,6 +359,37 @@ async function loadPlayerReasonStatsFromDatabase() {
     updatePlayerReasonStatsDisplay();
   } catch (err) {
     console.error('載入球員得失分原因統計失敗:', err);
+  }
+}
+
+// 從資料庫載入全局得分/失分原因統計
+async function loadReasonStatsFromDatabase() {
+  try {
+    const res = await fetch(`/api/reason-stats/${matchInfo.match_id}`);
+    if (!res.ok) return;
+    
+    const data = await res.json();
+    console.log('[LoadReasonStats] 從資料庫取得全局得分/失分原因統計:', data);
+    
+    // 初始化並加載統計
+    initializeReasonStats();
+    
+    if (data.score) {
+      Object.entries(data.score).forEach(([reasonId, count]) => {
+        reasonStats.score[reasonId] = count;
+      });
+    }
+    
+    if (data.loss) {
+      Object.entries(data.loss).forEach(([reasonId, count]) => {
+        reasonStats.loss[reasonId] = count;
+      });
+    }
+    
+    console.log('[LoadReasonStats] 載入後的 reasonStats:', reasonStats);
+    updateReasonStatsDisplay();
+  } catch (err) {
+    console.error('載入全局得分/失分原因統計失敗:', err);
   }
 }
 
@@ -817,6 +850,7 @@ function updatePlayerReasonStatsDisplay() {
     { id: 'attack_out', label: '攻擊失誤(Out Ball)' },
     { id: 'serve_error', label: '發球失誤' },
     { id: 'defense_error', label: '防守失誤' },
+    { id: 'foul', label: '犯規' },
   ];
   lossReasons.forEach(reason => {
     const th = document.createElement('th');
@@ -1171,6 +1205,21 @@ scorePlusBtn.addEventListener('click', (event) => {
         reasonStats.score[scoreType] += 1;
         console.log('記錄得分原因:', scoreType, '目前數量:', reasonStats.score[scoreType]);
         updateReasonStatsDisplay();
+        
+        // 保存全局得分原因統計到資料庫
+        try {
+          await fetch('/api/match-reason-stats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              match_id: matchInfo.match_id,
+              reason_id: scoreType,
+              reason_type: 'score',
+            }),
+          });
+        } catch (err) {
+          console.error('保存全局得分原因統計失敗:', err);
+        }
       }
       
       // 如果是需要記錄球員的原因，才記錄球員統計
@@ -1240,6 +1289,21 @@ scoreMinusBtn.addEventListener('click', (event) => {
         reasonStats.loss[lossType] += 1;
         console.log('記錄失分原因:', lossType, '目前數量:', reasonStats.loss[lossType]);
         updateReasonStatsDisplay();
+        
+        // 保存全局失分原因統計到資料庫
+        try {
+          await fetch('/api/match-reason-stats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              match_id: matchInfo.match_id,
+              reason_id: lossType,
+              reason_type: 'loss',
+            }),
+          });
+        } catch (err) {
+          console.error('保存全局失分原因統計失敗:', err);
+        }
       }
       
       // 如果是需要記錄球員的原因，才記錄球員統計

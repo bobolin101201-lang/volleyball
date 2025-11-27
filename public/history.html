@@ -553,41 +553,29 @@
       }
 
       // 構建得失分原因統計 HTML
-      function buildReasonStatsHtml(stats, playerReasonStats) {
-        // 統計得分和失分
-        const reasonStats = {
-          score: {},
-          loss: {}
-        };
-
-        // 從 stats 中統計得分（我方為正分）和失分（對方為正分）
-        stats.forEach(stat => {
-          if (stat.team === 'ours' && stat.grade) {
-            // 這是我方接球品質統計，不是得失分原因
-            // 所以不在這裡統計
-          }
-        });
-
-        // 從 playerReasonStats 中統計得分/失分原因
-        playerReasonStats.forEach(stat => {
-          if (stat.reason_type === 'score') {
-            reasonStats.score[stat.reason_id] = (reasonStats.score[stat.reason_id] || 0) + stat.count;
-          } else if (stat.reason_type === 'loss') {
-            reasonStats.loss[stat.reason_id] = (reasonStats.loss[stat.reason_id] || 0) + stat.count;
-          }
-        });
-
+      function buildReasonStatsHtml(reasonStats) {
         const scoreReasons = [
           { id: 'attack', label: '攻擊得分' },
           { id: 'serve', label: '發球得分' },
           { id: 'block', label: '攔網得分' },
           { id: 'tip', label: '吊球得分' },
+          { id: 'opp_attack_error', label: '對方攻擊失誤' },
+          { id: 'opp_serve_error', label: '對方發球失誤' },
+          { id: 'opp_defense_error', label: '對方防守失誤' },
+          { id: 'opp_foul', label: '對方犯規' },
         ];
         const lossReasons = [
+          { id: 'opp_attack', label: '對方攻擊得分' },
+          { id: 'opp_serve', label: '對方發球得分' },
+          { id: 'opp_tip', label: '對方吊球得分' },
+          { id: 'opp_block', label: '對方攔網得分' },
           { id: 'attack_no_in', label: '攻擊失誤(No In)' },
           { id: 'attack_out', label: '攻擊失誤(Out Ball)' },
           { id: 'serve_error', label: '發球失誤' },
           { id: 'defense_error', label: '防守失誤' },
+          { id: 'raise_error', label: '舉球失誤' },
+          { id: 'other_error', label: '其他失誤' },
+          { id: 'foul', label: '犯規' },
         ];
 
         // 構建得分原因表格
@@ -640,12 +628,15 @@
           // 載入該場比賽的所有統計
           const statsRes = await fetch(`/api/match-stats/${matchId}`);
           const playerReasonRes = await fetch(`/api/player-reason-stats/${matchId}`);
+          const reasonStatsRes = await fetch(`/api/reason-stats/${matchId}`);
 
           let stats = [];
           let playerReasonStats = [];
+          let reasonStats = { score: {}, loss: {} };
 
           if (statsRes.ok) stats = await statsRes.json();
           if (playerReasonRes.ok) playerReasonStats = await playerReasonRes.json();
+          if (reasonStatsRes.ok) reasonStats = await reasonStatsRes.json();
 
           // 構建詳細內容
           const detailsBody = document.getElementById('set-details-body');
@@ -788,6 +779,7 @@
             { id: 'attack_out', label: '攻擊失誤(Out Ball)' },
             { id: 'serve_error', label: '發球失誤' },
             { id: 'defense_error', label: '防守失誤' },
+            { id: 'foul', label: '犯規' },
           ];
 
           let playerReasonHtml = '';
@@ -821,7 +813,7 @@
             </div>
             <div class="set-details-section">
               <h4>得分/失分原因統計</h4>
-              ${buildReasonStatsHtml(stats, playerReasonStats)}
+              ${buildReasonStatsHtml(reasonStats)}
             </div>
             <div class="set-details-section">
               <h4>我方球員得失分統計</h4>
