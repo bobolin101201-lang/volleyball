@@ -185,14 +185,14 @@ function generateMatchId() {
 }
 
 // 從資料庫建立新比賽
-async function createMatchInDatabase() {
+async function createMatchInDatabase(school = '') {
   try {
     const res = await fetch('/api/matches', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         match_id: matchInfo.match_id,
-        school: '',
+        school: school,
         date: new Date().toISOString().split('T')[0],
       }),
     });
@@ -1058,8 +1058,50 @@ function nextSet() {
   matchIdDisplay.textContent = newMatchId;
   localStorage.setItem('currentMatchId', newMatchId);
   
-  // 立即建立新局的比賽記錄到資料庫（不需要等待）
-  createMatchInDatabase();
+  // 立即建立新局的比賽記錄到資料庫，並傳入當前的學校名稱和日期
+  try {
+    fetch('/api/matches', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        match_id: matchInfo.match_id,
+        school: matchInfo.school,
+        date: matchInfo.date,
+      }),
+    }).then(res => {
+      if (!res.ok) throw new Error('建立比賽失敗');
+      window.history.replaceState({}, '', `?match=${matchInfo.match_id}`);
+    }).catch(err => console.error('建立比賽失敗:', err));
+  } catch (err) {
+    console.error('建立比賽異常:', err);
+  }
+  
+  // 保存上場球員到新比賽
+  lineupState.ours.forEach(player => {
+    fetch('/api/match-lineups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        match_id: matchInfo.match_id,
+        player_id: player.id,
+        player_name: player.name,
+        team: 'ours',
+      }),
+    }).catch(err => console.error('保存我方球員失敗:', err));
+  });
+  
+  lineupState.opponent.forEach(player => {
+    fetch('/api/match-lineups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        match_id: matchInfo.match_id,
+        player_id: player.id,
+        player_name: player.fullName || player.name,
+        team: 'opponent',
+      }),
+    }).catch(err => console.error('保存對方球員失敗:', err));
+  });
   
   // 重置分數和狀態（清空顯示但保留比賽信息）
   score.ours = 0;
