@@ -546,15 +546,6 @@ async function addPlayer(teamKey) {
 
   const player = { id: playerId, name: playerName, grade: null };
   
-  // 對方球員需要額外保存完整名稱（含學校前綴）用於資料庫
-  if (teamKey === 'opponent') {
-    const schoolInput = document.getElementById('school-input');
-    const schoolName = schoolInput ? schoolInput.value.trim() : '';
-    player.fullName = schoolName ? `${schoolName}_${playerName}` : playerName;
-  } else {
-    player.fullName = playerName;
-  }
-  
   lineupState[teamKey].push(player);
 
   // 為我方球員初始化得分/失分原因統計
@@ -974,8 +965,8 @@ async function saveMatchToDatabase() {
 async function saveStatToDatabase(teamKey, playerName, grade) {
   try {
     const player = lineupState[teamKey].find(p => p.name === playerName);
-    // 使用 fullName（包含學校前綴）來保存到資料庫
-    const dbPlayerName = player?.fullName || playerName;
+    // 資料庫只存純名稱（不含學校前綴）
+    const dbPlayerName = playerName;
     await fetch('/api/match-stats', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1097,7 +1088,7 @@ function nextSet() {
       body: JSON.stringify({
         match_id: matchInfo.match_id,
         player_id: player.id,
-        player_name: player.fullName || player.name,
+        player_name: player.name,
         team: 'opponent',
       }),
     }).catch(err => console.error('保存對方球員失敗:', err));

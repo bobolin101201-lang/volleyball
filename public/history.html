@@ -702,6 +702,16 @@
           // 對方接球品質表格
           let opponentQualityHtml = '';
           if (Object.keys(opponentPlayerStats).length > 0) {
+            // 按 D級從多到少排列，D級相同則按 C級從多到少排列
+            const sortedOpponentStats = Object.entries(opponentPlayerStats).sort(([, aGrades], [, bGrades]) => {
+              const aDCount = aGrades.D || 0;
+              const bDCount = bGrades.D || 0;
+              if (bDCount !== aDCount) return bDCount - aDCount;
+              const aCCount = aGrades.C || 0;
+              const bCCount = bGrades.C || 0;
+              return bCCount - aCCount;
+            });
+            
             opponentQualityHtml = `<table class="stats-table">
               <thead>
                 <tr>
@@ -713,7 +723,7 @@
                 </tr>
               </thead>
               <tbody>
-                ${Object.entries(opponentPlayerStats).map(([playerName, grades]) => `
+                ${sortedOpponentStats.map(([playerName, grades]) => `
                   <tr>
                     <td>${playerName}</td>
                     <td>${grades.A || 0}</td>
