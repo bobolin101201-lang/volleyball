@@ -369,6 +369,7 @@ app.post('/api/player-reason-stats', async (req, res) => {
 app.post('/api/match-reason-stats', async (req, res) => {
   try {
     const { match_id, reason_id, reason_type } = req.body;
+    console.log('[ReasonStats] 保存:', { match_id, reason_id, reason_type });
     
     // 先查找是否已存在
     const { data: existing, error: queryError } = await supabase
@@ -379,18 +380,21 @@ app.post('/api/match-reason-stats', async (req, res) => {
       .eq('reason_type', reason_type)
       .single();
     
+    // 如果存在記錄，更新計數
     if (existing) {
-      // 更新計數
+      console.log('[ReasonStats] 找到現有記錄，計數:', existing.count, '-> 更新為:', existing.count + 1);
       const { data, error } = await supabase
         .from('match_reason_stats')
         .update({ count: existing.count + 1, updated_at: new Date() })
         .eq('id', existing.id)
         .select();
       if (error) throw error;
+      console.log('[ReasonStats] 更新成功:', data[0]);
       return res.json(data[0]);
     }
     
-    // 新增統計
+    // 如果沒找到（queryError 或 existing 為 null），新增統計
+    console.log('[ReasonStats] 沒有現有記錄，新增記錄');
     const { data, error } = await supabase
       .from('match_reason_stats')
       .insert([{ 
@@ -401,9 +405,10 @@ app.post('/api/match-reason-stats', async (req, res) => {
       }])
       .select();
     if (error) throw error;
+    console.log('[ReasonStats] 新增成功:', data[0]);
     res.json(data[0]);
   } catch (err) {
-    console.error(err);
+    console.error('[ReasonStats] 保存失敗:', err);
     res.status(500).json({ error: err.message });
   }
 });

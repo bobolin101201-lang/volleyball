@@ -726,11 +726,19 @@ function setPlayerGrade(teamKey, playerId, grade) {
   // 我方球員被評分時設為 false（接發球）
   // 對方球員被評分時設為 true（發球）
   if (teamKey === 'ours') {
-    currentServer = false;
-    console.log(`[Grade] 我方球員 "${player.name}" 被評分為 ${grade}，currentServer = ${currentServer} (接發球)`);
+    if(grade ==='F'){
+      currentServer = true;
+    }else{
+      currentServer = false;
+      console.log(`[Grade] 我方球員 "${player.name}" 被評分為 ${grade}，currentServer = ${currentServer} (接發球)`);
+    }
   } else if (teamKey === 'opponent') {
-    currentServer = true;
-    console.log(`[Grade] 對方球員 "${player.name}" 被評分為 ${grade}，currentServer = ${currentServer} (發球)`);
+    if(grade ==='F'){
+      currentServer = false;
+    }else{
+      currentServer = true;
+      console.log(`[Grade] 對方球員 "${player.name}" 被評分為 ${grade}，currentServer = ${currentServer} (發球)`);
+    }
   }
   
   currentGradedPlayerId = playerId;
@@ -1107,6 +1115,17 @@ function resetMatch() {
   updateScoreDisplay();
   updateScoreBtnsStyle();
   
+  // 重置輪次統計
+  currentRotation = 1;
+  currentServer = false;
+  hasOurServeInCurrentRotation = false;
+  hasOppServeInCurrentRotation = false;
+  for (let i = 1; i <= 6; i++) {
+    rotationStats[i].serve = 0;
+    rotationStats[i].receive = 0;
+  }
+  updateRotationStatsDisplay();
+  
   // 清空上場球員
   lineupState.ours = [];
   lineupState.opponent = [];
@@ -1201,6 +1220,17 @@ function nextSet() {
   resetStats();
   updateScoreDisplay();
   updateScoreBtnsStyle();
+  
+  // 重置輪次統計
+  currentRotation = 1;
+  currentServer = false;
+  hasOurServeInCurrentRotation = false;
+  hasOppServeInCurrentRotation = false;
+  for (let i = 1; i <= 6; i++) {
+    rotationStats[i].serve = 0;
+    rotationStats[i].receive = 0;
+  }
+  updateRotationStatsDisplay();
   
   // 重置得分上限為25分
   maxPointsPerSet = 25;
