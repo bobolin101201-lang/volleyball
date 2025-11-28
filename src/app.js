@@ -440,6 +440,81 @@ app.get('/api/reason-stats/:match_id', async (req, res) => {
   }
 });
 
+// ===== 輪次統計 API =====
+// 保存輪次統計
+app.post('/api/match-rotation-stats', async (req, res) => {
+  try {
+    const { match_id, rotation_number, serve, receive } = req.body;
+    console.log(`[RotationStats] 保存輪次 ${rotation_number}:`, { match_id, serve, receive });
+    
+    // 先檢查是否已存在
+    const { data: existing, error: checkError } = await supabase
+      .from('match_rotation_stats')
+      .select('id')
+      .eq('match_id', match_id)
+      .eq('rotation_number', rotation_number)
+      .single();
+    
+    let result;
+    if (existing) {
+      // 更新現有記錄
+      const { data, error } = await supabase
+        .from('match_rotation_stats')
+        .update({ serve, receive })
+        .eq('match_id', match_id)
+        .eq('rotation_number', rotation_number)
+        .select();
+      if (error) throw error;
+      result = data[0];
+    } else {
+      // 插入新記錄
+      const { data, error } = await supabase
+        .from('match_rotation_stats')
+        .insert([{ match_id, rotation_number, serve, receive }])
+        .select();
+      if (error) throw error;
+      result = data[0];
+    }
+    
+    console.log('[RotationStats] 保存成功:', result);
+    res.json(result);
+  } catch (err) {
+    console.error('[RotationStats] 保存失敗:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// 取得輪次統計
+app.get('/api/match-rotation-stats/:match_id', async (req, res) => {
+  try {
+    const { match_id } = req.params;
+    console.log('[RotationStats] 查詢:', match_id);
+    
+    const { data, error } = await supabase
+      .from('match_rotation_stats')
+      .select('*')
+      .eq('match_id', match_id)
+      .order('rotation_number', { ascending: true });
+    
+    if (error) throw error;
+    
+    // 整理為物件格式 { 1: {serve, receive}, 2: {...} }
+    const rotationStats = {};
+    data.forEach(stat => {
+      rotationStats[stat.rotation_number] = {
+        serve: stat.serve,
+        receive: stat.receive
+      };
+    });
+    
+    console.log('[RotationStats] 查詢成功:', rotationStats);
+    res.json(rotationStats);
+  } catch (err) {
+    console.error('[RotationStats] 查詢失敗:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // 刪除比賽及其相關數據
 app.delete('/api/matches/:match_id', async (req, res) => {
   try {

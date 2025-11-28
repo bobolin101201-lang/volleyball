@@ -99,6 +99,21 @@ function initializePlayerReasonStats(teamKey, playerId) {
   }
 }
 
+let currentRotation = 1; // 當前輪次（1-6）
+let currentServer = false;
+let hasOurServeInCurrentRotation = false; // 當前輪次是否已有我方發球
+let hasOppServeInCurrentRotation = false; // 當前輪次是否已有對方發球
+
+// 輪次發球/接發球統計 - 每輪次記錄發球和接發球的數量
+const rotationStats = {
+  1: { serve: 0, receive: 0 },
+  2: { serve: 0, receive: 0 },
+  3: { serve: 0, receive: 0 },
+  4: { serve: 0, receive: 0 },
+  5: { serve: 0, receive: 0 },
+  6: { serve: 0, receive: 0 },
+};
+
 let activeGradeSelector = null;
 let activeScoreTypeSelector = null;
 let isDeleteMode = false;
@@ -168,6 +183,7 @@ async function initializeMatch() {
   loadAvailablePlayers();
   updateScoreDisplay();
   updateScoreBtnsStyle();
+  updateRotationStatsDisplay();
   
   // 設置默認得分上限為25分
   maxPointsPerSet = 25;
@@ -240,6 +256,8 @@ async function loadMatchFromDatabase() {
     await loadReasonStatsFromDatabase();
     // 載入球員得失分原因統計
     await loadPlayerReasonStatsFromDatabase();
+    // 載入輪次統計
+    await loadRotationStatsFromDatabase();
   } catch (err) {
     console.error('載入比賽失敗:', err);
     throw err; // 重新拋出錯誤讓呼叫者處理
@@ -390,6 +408,30 @@ async function loadReasonStatsFromDatabase() {
     updateReasonStatsDisplay();
   } catch (err) {
     console.error('載入全局得分/失分原因統計失敗:', err);
+  }
+}
+
+// 從資料庫載入輪次統計
+async function loadRotationStatsFromDatabase() {
+  try {
+    const res = await fetch(`/api/match-rotation-stats/${matchInfo.match_id}`);
+    if (!res.ok) return;
+    
+    const data = await res.json();
+    console.log('[LoadRotationStats] 從資料庫取得輪次統計:', data);
+    
+    // 初始化輪次統計
+    for (let i = 1; i <= 6; i++) {
+      if (data[i]) {
+        rotationStats[i].serve = data[i].serve;
+        rotationStats[i].receive = data[i].receive;
+      }
+    }
+    
+    console.log('[LoadRotationStats] 載入後的 rotationStats:', rotationStats);
+    updateRotationStatsDisplay();
+  } catch (err) {
+    console.error('載入輪次統計失敗:', err);
   }
 }
 
@@ -680,9 +722,21 @@ function setPlayerGrade(teamKey, playerId, grade) {
     button.dataset.grade = grade;
   }
   
+  // 設定 currentServer 標誌
+  // 我方球員被評分時設為 false（接發球）
+  // 對方球員被評分時設為 true（發球）
+  if (teamKey === 'ours') {
+    currentServer = false;
+    console.log(`[Grade] 我方球員 "${player.name}" 被評分為 ${grade}，currentServer = ${currentServer} (接發球)`);
+  } else if (teamKey === 'opponent') {
+    currentServer = true;
+    console.log(`[Grade] 對方球員 "${player.name}" 被評分為 ${grade}，currentServer = ${currentServer} (發球)`);
+  }
+  
   currentGradedPlayerId = playerId;
   hasGradedPlayer = true;
   updateScoreBtnsStyle();
+  updateRotationStatsDisplay(); // 立即更新背景色
 }
 
 function updateStats(teamKey, playerId, playerName, grade) {
@@ -936,6 +990,46 @@ function updatePlayerReasonStatsDisplay() {
   
   table.appendChild(tbody);
   container.appendChild(table);
+}
+
+// 更新輪次發球/接發球統計表顯示
+function updateRotationStatsDisplay() {
+  const rotationStatsTableBody = document.getElementById('rotation-stats-table');
+  if (!rotationStatsTableBody) return;
+  
+  // 取得所有現有的行
+  const rows = rotationStatsTableBody.querySelectorAll('tr');
+  
+  // 更新每一輪次的數據
+  for (let i = 1; i <= 6; i++) {
+    if (rows[i - 1]) {
+      const cells = rows[i - 1].querySelectorAll('td');
+      if (cells.length >= 3) {
+        cells[0].textContent = i;           // 輪次
+        cells[1].textContent = rotationStats[i].serve;     // 發球
+        cells[2].textContent = rotationStats[i].receive;   // 接發球
+        
+        // 清除所有背景色
+        cells[0].style.backgroundColor = '';
+        cells[1].style.backgroundColor = '';
+        cells[2].style.backgroundColor = '';
+        
+        // 為當前輪次的相應欄位添加背景色
+        if (i === currentRotation) {
+          cells[0].style.backgroundColor = '#e0e7ff'; // 輪次欄位淺藍色
+          
+          // 根據 currentServer 標記發球或接發球
+          if (currentServer === true) {
+            // 當前是發球狀態，標記發球欄位
+            cells[1].style.backgroundColor = '#fef08a'; // 發球欄位黃色
+          } else if (currentServer === false) {
+            // 當前是接發球狀態，標記接發球欄位
+            cells[2].style.backgroundColor = '#fca5a5'; // 接發球欄位淺紅色
+          }
+        }
+      }
+    }
+  }
 }
 
 function resetDisplayedGrades() {
@@ -1289,6 +1383,45 @@ scorePlusBtn.addEventListener('click', (event) => {
         });
       });
 
+      // 記錄輪次統計：currentServer = true 且得分時，發球數 +1
+      if (currentServer === true) {
+        rotationStats[currentRotation].serve += 1;
+        console.log(`[RotationStats] 輪次 ${currentRotation} 發球數 +1，目前發球: ${rotationStats[currentRotation].serve}`);
+        // 保存輪次統計到資料庫
+        try {
+          await fetch('/api/match-rotation-stats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              match_id: matchInfo.match_id,
+              rotation_number: currentRotation,
+              serve: rotationStats[currentRotation].serve,
+              receive: rotationStats[currentRotation].receive,
+            }),
+          });
+        } catch (err) {
+          console.error('[RotationStats] 保存失敗:', err);
+        }
+        updateRotationStatsDisplay();
+      }
+
+      // currentServer = false 且得分時，設定 hasOppServeInCurrentRotation = true
+      if (currentServer === false) {
+        hasOppServeInCurrentRotation = true;
+        currentServer = true; // 得分後輪到我方發球
+        updateRotationStatsDisplay(); // 立即更新背景色
+        console.log(`[RotationAdvance] 設定 hasOppServeInCurrentRotation = true`);
+      }
+
+      // 檢查是否兩個都已記錄，如果是則進入下一輪次
+      if (hasOurServeInCurrentRotation && hasOppServeInCurrentRotation) {
+        currentRotation = currentRotation === 6 ? 1 : currentRotation + 1;
+        hasOurServeInCurrentRotation = false;
+        hasOppServeInCurrentRotation = false;
+        updateRotationStatsDisplay(); // 立即更新背景色
+        console.log(`[RotationAdvance] 進入輪次 ${currentRotation}，重置標誌`);
+      }
+
       score.ours += 1;
       updateScoreDisplay();
       clearAllDisplayedGrades(null);
@@ -1372,6 +1505,45 @@ scoreMinusBtn.addEventListener('click', (event) => {
           }
         });
       });
+
+      // 記錄輪次統計：currentServer = false 且失分時，接發球數 +1
+      if (currentServer === false) {
+        rotationStats[currentRotation].receive += 1;
+        console.log(`[RotationStats] 輪次 ${currentRotation} 接發球數 +1，目前接發球: ${rotationStats[currentRotation].receive}`);
+        // 保存輪次統計到資料庫
+        try {
+          await fetch('/api/match-rotation-stats', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              match_id: matchInfo.match_id,
+              rotation_number: currentRotation,
+              serve: rotationStats[currentRotation].serve,
+              receive: rotationStats[currentRotation].receive,
+            }),
+          });
+        } catch (err) {
+          console.error('[RotationStats] 保存失敗:', err);
+        }
+        updateRotationStatsDisplay();
+      }
+
+      // currentServer = true 且失分時，設定 hasOurServeInCurrentRotation = true
+      if (currentServer === true) {
+        hasOurServeInCurrentRotation = true;
+        currentServer = false; // 失分後輪到對方發球
+        updateRotationStatsDisplay(); // 立即更新背景色
+        console.log(`[RotationAdvance] 設定 hasOurServeInCurrentRotation = true`);
+      }
+
+      // 檢查是否兩個都已記錄，如果是則進入下一輪次
+      if (hasOurServeInCurrentRotation && hasOppServeInCurrentRotation) {
+        currentRotation = currentRotation === 6 ? 1 : currentRotation + 1;
+        hasOurServeInCurrentRotation = false;
+        hasOppServeInCurrentRotation = false;
+        updateRotationStatsDisplay(); // 立即更新背景色
+        console.log(`[RotationAdvance] 進入輪次 ${currentRotation}，重置標誌`);
+      }
 
       score.opponent += 1;
       updateScoreDisplay();

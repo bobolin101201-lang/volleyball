@@ -629,14 +629,17 @@
           const statsRes = await fetch(`/api/match-stats/${matchId}`);
           const playerReasonRes = await fetch(`/api/player-reason-stats/${matchId}`);
           const reasonStatsRes = await fetch(`/api/reason-stats/${matchId}`);
+          const rotationStatsRes = await fetch(`/api/match-rotation-stats/${matchId}`);
 
           let stats = [];
           let playerReasonStats = [];
           let reasonStats = { score: {}, loss: {} };
+          let rotationStats = {};
 
           if (statsRes.ok) stats = await statsRes.json();
           if (playerReasonRes.ok) playerReasonStats = await playerReasonRes.json();
           if (reasonStatsRes.ok) reasonStats = await reasonStatsRes.json();
+          if (rotationStatsRes.ok) rotationStats = await rotationStatsRes.json();
 
           // 構建詳細內容
           const detailsBody = document.getElementById('set-details-body');
@@ -816,7 +819,36 @@
             playerReasonHtml = '<p style="color: #64748b; font-style: italic;">無統計數據</p>';
           }
 
+          // 構建輪次統計 HTML
+          let rotationHtml = '';
+          if (Object.keys(rotationStats).length > 0) {
+            rotationHtml = `<table class="stats-table">
+              <thead>
+                <tr>
+                  <th>輪次</th>
+                  <th>發球</th>
+                  <th>接發球</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${[1, 2, 3, 4, 5, 6].map(i => `
+                  <tr>
+                    <td>${i}</td>
+                    <td>${rotationStats[i]?.serve || 0}</td>
+                    <td>${rotationStats[i]?.receive || 0}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>`;
+          } else {
+            rotationHtml = '<p style="color: #64748b; font-style: italic;">無輪次統計數據</p>';
+          }
+
           detailsBody.innerHTML = `
+            <div class="set-details-section">
+              <h4>輪次發球/接發球統計</h4>
+              ${rotationHtml}
+            </div>
             <div class="set-details-section">
               <h4>我方接球品質統計</h4>
               ${qualityHtml}
