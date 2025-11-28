@@ -560,6 +560,19 @@ app.delete('/api/matches/:match_id', async (req, res) => {
     }
     console.log('全局得分/失分原因統計刪除成功');
     
+    // 刪除該比賽的輪次統計
+    console.log('正在刪除輪次統計...');
+    const { error: rotationStatsError } = await supabase
+      .from('match_rotation_stats')
+      .delete()
+      .eq('match_id', match_id);
+    
+    if (rotationStatsError) {
+      console.error('刪除輪次統計失敗:', rotationStatsError);
+      throw rotationStatsError;
+    }
+    console.log('輪次統計刪除成功');
+    
     // 刪除該比賽的上場球員
     console.log('正在刪除上場球員...');
     const { error: lineupsError } = await supabase
